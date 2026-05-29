@@ -48,11 +48,18 @@ export async function POST(req: NextRequest) {
     data: { clientId: Number(clientId), room, startTime: start, endTime: end, notes, sessionType: sessionType || 'demo' },
     include: { client: true, batch: { include: { enrolments: { include: { client: true } } } } },
   })
-await createCalendarEvent(
+const calendarEvent = await createCalendarEvent(
   booking.client?.name || 'Studio Booking',
   booking.startTime,
   booking.endTime,
   booking.notes || ''
 )
+await prisma.booking.update({
+  where: { id: booking.id },
+  data: {
+    googleEventId: calendarEvent.id
+  }
+})
+
   return NextResponse.json(booking, { status: 201 })
 }

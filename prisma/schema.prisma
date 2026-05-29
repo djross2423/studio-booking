@@ -15,6 +15,7 @@ model Client {
   bookings     Booking[]
   enrolments   BatchEnrolment[]
   absences     Absence[]
+ 
 }
 
 model Faculty {
@@ -62,6 +63,7 @@ model Booking {
   sessionType       String?
   status            String               @default("confirmed")
   notes             String?
+  googleEventId     String?
   batchId           Int?
   batch             Batch?               @relation(fields: [batchId], references: [id])
   createdAt         DateTime             @default(now())
