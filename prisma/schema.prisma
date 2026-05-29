@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Client {
+  id           Int              @id @default(autoincrement())
+  name         String
+  phone        String?
+  notes        String?
+  createdAt    DateTime         @default(now())
+  bookings     Booking[]
+  enrolments   BatchEnrolment[]
+  absences     Absence[]
+}
+
+model Faculty {
+  id          Int                  @id @default(autoincrement())
+  name        String
+  phone       String?
+  createdAt   DateTime             @default(now())
+  batches     Batch[]
+  attendance  FacultyAttendance[]
+}
+
+model Batch {
+  id          Int              @id @default(autoincrement())
+  name        String
+  room        String
+  startTime   String
+  duration    Int
+  repeatDays  String
+  startDate   String
+  endDate     String
+  color       String           @default("#6C3CE1")
+  status      String           @default("active")
+  facultyId   Int?
+  faculty     Faculty?         @relation(fields: [facultyId], references: [id])
+  createdAt   DateTime         @default(now())
+  bookings    Booking[]
+  enrolments  BatchEnrolment[]
+}
+
+model BatchEnrolment {
+  id        Int     @id @default(autoincrement())
+  batchId   Int
+  clientId  Int
+  batch     Batch   @relation(fields: [batchId], references: [id])
+  client    Client  @relation(fields: [clientId], references: [id])
+}
+
+model Booking {
+  id                Int                  @id @default(autoincrement())
+  clientId          Int
+  client            Client               @relation(fields: [clientId], references: [id])
+  room              String
+  startTime         DateTime
+  endTime           DateTime
+  sessionType       String?
+  status            String               @default("confirmed")
+  notes             String?
+  batchId           Int?
+  batch             Batch?               @relation(fields: [batchId], references: [id])
+  createdAt         DateTime             @default(now())
+  absences          Absence[]
+  facultyAttendance FacultyAttendance[]
+}
+
+model Absence {
+  id        Int      @id @default(autoincrement())
+  clientId  Int
+  bookingId Int
+  client    Client   @relation(fields: [clientId], references: [id])
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+  createdAt DateTime @default(now())
+  @@unique([clientId, bookingId])
+}
+
+model FacultyAttendance {
+  id        Int      @id @default(autoincrement())
+  facultyId Int
+  bookingId Int
+  present   Boolean  @default(true)
+  faculty   Faculty  @relation(fields: [facultyId], references: [id])
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+  createdAt DateTime @default(now())
+  @@unique([facultyId, bookingId])
+}
