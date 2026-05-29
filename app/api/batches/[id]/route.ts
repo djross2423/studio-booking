@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { deleteCalendarEvent } from '@/lib/google-calendar'
 
 export async function GET(
   _req: NextRequest,
@@ -61,9 +62,33 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   const id = Number(params.id)
-  const bookings = await prisma.booking.findMany({ where: { batchId: id }, select: { id: true } })
+const bookings = await prisma.booking.findMany({
+  where: { batchId: id },
+  select: {
+    id: true,
+    googleEventId: true
+  }
+})
   const bookingIds = bookings.map(b => b.id)
-  await prisma.absence.deleteMany({ where: { bookingId: { in: bookingIds } } })
+for (const booking of bookings) {
+  if (booking.googleEventId) {
+    try {
+      await deleteCalendarEvent(
+        booking.googleEventId
+      )
+
+      console.log(
+        `Deleted Google event for booking ${booking.id}`
+      )
+    } catch (err) {
+      console.error(
+        `Failed deleting Google event for booking ${booking.id}`,
+        err
+      )
+    }
+  }
+} 
+ await prisma.absence.deleteMany({ where: { bookingId: { in: bookingIds } } })
   await prisma.facultyAttendance.deleteMany({ where: { bookingId: { in: bookingIds } } })
   await prisma.booking.deleteMany({ where: { batchId: id } })
   await prisma.batchEnrolment.deleteMany({ where: { batchId: id } })

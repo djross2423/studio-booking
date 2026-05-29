@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isStudioAvailable } from '@/lib/availability'
+import { updateCalendarEvent } from '@/lib/google-calendar'
 
 export async function POST(
   req: NextRequest,
@@ -14,10 +15,13 @@ export async function POST(
     include: {
       bookings: {
         where: { status: 'confirmed' },
-        orderBy: { startTime: 'asc' }
+        orderBy: { startTime: 'asc' },
+        include: {
+         client: true
       }
     }
-  })
+  }  
+})
 
   if (!batch) return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
 
@@ -73,14 +77,40 @@ export async function POST(
     }
   }
 
-  // Apply all shifts
-  for (const s of shifts) {
-    await prisma.booking.update({
-      where: { id: s.id },
-      data: { startTime: s.newStart, endTime: s.newEnd }
-    })
-  }
+// Apply all shifts + update Google Calendar
+for (const s of shifts) {
+  const booking = await prisma.booking.update({
+    where: { id: s.id },
+    data: {
+      startTime: s.newStart,
+      endTime: s.newEnd
+    },
+    include: {
+      client: true
+    }
+  })
 
+  if (booking.googleEventId) {
+    try {
+      await updateCalendarEvent(
+        booking.googleEventId,
+        booking.notes || 'Batch Session',
+        booking.startTime,
+        booking.endTime,
+        booking.notes || ''
+      )
+
+      console.log(
+        `Updated Google Calendar for booking ${booking.id}`
+      )
+    } catch (err) {
+      console.error(
+        `Failed updating Google Calendar for booking ${booking.id}`,
+        err
+      )
+    }
+  }
+}
   // Update batch endDate
   const newEndDate = shifts[shifts.length - 1].newStart.toISOString().split('T')[0]
   await prisma.batch.update({

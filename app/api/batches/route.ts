@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isStudioAvailable } from '@/lib/availability'
+import { createCalendarEvent } from '@/lib/google-calendar'
 
 const BATCH_COLORS = [
   '#F59E0B', '#EF4444', '#3B82F6', '#EC4899', '#14B8A6', '#F97316', '#84CC16'
@@ -91,6 +92,33 @@ export async function POST(req: NextRequest) {
       faculty: true
     }
   })
+
+for (const booking of batch.bookings) {
+  try {
+    const event = await createCalendarEvent(
+      batch.name,
+      booking.startTime,
+      booking.endTime,
+      batch.name
+    )
+
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: {
+        googleEventId: event.id || null
+      }
+    })
+
+    console.log(
+      `Created Google event for booking ${booking.id}`
+    )
+  } catch (err) {
+    console.error(
+      `Failed Google event for booking ${booking.id}`,
+      err
+    )
+  }
+}
 
   return NextResponse.json(batch, { status: 201 })
 }
