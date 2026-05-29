@@ -36,3 +36,27 @@ export async function createCalendarEvent(
 
   return event.data
 }
+export async function updateCalendarEvent(
+  eventId: string,
+  title: string,
+  startTime: Date,
+  endTime: Date,
+  description?: string
+) {
+  const event = await calendar.events.update({
+    calendarId: process.env.GOOGLE_CALENDAR_ID,
+    eventId,
+    requestBody: {
+      summary: title,
+      description,
+      start: {
+        dateTime: startTime.toISOString()
+      },
+      end: {
+        dateTime: endTime.toISOString()
+      }
+    }
+  })
+
+  return event.data
+}

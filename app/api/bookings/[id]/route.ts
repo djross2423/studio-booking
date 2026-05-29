@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isStudioAvailable } from '@/lib/availability'
+import { updateCalendarEvent } from '@/lib/google-calendar'
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const id = Number(params.id)
+const existingBooking = await prisma.booking.findUnique({
+  where: { id },
+  include: { client: true }
+})
+
+if (!existingBooking) {
+  return NextResponse.json(
+    { error: 'Booking not found' },
+    { status: 404 }
+  )
+}
   const body = await req.json()
   const { clientId, room, startTime, endTime, notes, status } = body
 
@@ -38,7 +50,16 @@ export async function PATCH(
     },
     include: { client: true },
   })
-  return NextResponse.json(booking)
+if (booking.googleEventId) {
+  await updateCalendarEvent(
+    booking.googleEventId,
+    booking.client?.name || 'Studio Booking',
+    booking.startTime,
+    booking.endTime,
+    booking.notes || ''
+  )
+}  
+return NextResponse.json(booking)
 }
 
 export async function DELETE(
