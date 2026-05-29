@@ -331,6 +331,17 @@ export default function App() {
     .filter(b => new Date(b.startTime) < todayMidnight)
     .sort((a,b)=>b.startTime.localeCompare(a.startTime))
   const filteredBookings = showPastBookings ? pastBookings : upcomingBookings
+const groupedBookings = filteredBookings.reduce((acc, booking) => {
+  const dateKey = fmtDate(new Date(booking.startTime))
+
+  if (!acc[dateKey]) {
+    acc[dateKey] = []
+  }
+
+  acc[dateKey].push(booking)
+
+  return acc
+}, {} as Record<string, Booking[]>)
 
   function DatePickerInput({ value, onChange, room }: { value:string; onChange:(d:string)=>void; room:string }) {
     const [open, setOpen] = useState(false)
@@ -611,7 +622,43 @@ export default function App() {
                 Past ({pastBookings.length})
               </button>
             </div>
-            {filteredBookings.length===0 ? <EmptyState text={showPastBookings?'No past bookings':'No upcoming bookings'} /> : filteredBookings.map(b=><BookingCard key={b.id} b={b} onClick={()=>openEdit(b)} />)}
+{filteredBookings.length===0 ? (
+  <EmptyState
+    text={showPastBookings ? 'No past bookings' : 'No upcoming bookings'}
+  />
+) : (
+  Object.entries(groupedBookings).map(([date, bookings]) => (
+    <div
+      key={date}
+      style={{
+        background:'#1A1A24',
+        border:'1px solid #2A2A3D',
+        borderRadius:16,
+        padding:16,
+        marginBottom:16
+      }}
+    >
+      <div
+        style={{
+          display:'flex',
+          justifyContent:'space-between',
+          marginBottom:12
+        }}
+      >
+        <strong>{date}</strong>
+        <span>{bookings.length} bookings</span>
+      </div>
+
+      {bookings.map(b => (
+        <BookingCard
+          key={b.id}
+          b={b}
+          onClick={() => openEdit(b)}
+        />
+      ))}
+    </div>
+  ))
+)}
           </div>
         </div>
       )}

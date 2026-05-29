@@ -16,7 +16,7 @@ export async function PATCH(
     if (end <= start) {
       return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 })
     }
-    const available = await isStudioAvailable(start, end, room || '', id)
+    const available = await isStudioAvailable(start, end, room || '', [id])
     if (!available) {
       return NextResponse.json(
         { error: 'Studio is already booked during this time' },
