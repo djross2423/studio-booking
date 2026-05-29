@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isStudioAvailable } from '@/lib/availability'
+import { createCalendarEvent } from '@/lib/google-calendar'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -47,5 +48,11 @@ export async function POST(req: NextRequest) {
     data: { clientId: Number(clientId), room, startTime: start, endTime: end, notes, sessionType: sessionType || 'demo' },
     include: { client: true, batch: { include: { enrolments: { include: { client: true } } } } },
   })
+await createCalendarEvent(
+  booking.client?.name || 'Studio Booking',
+  booking.startTime,
+  booking.endTime,
+  booking.notes || ''
+)
   return NextResponse.json(booking, { status: 201 })
 }
