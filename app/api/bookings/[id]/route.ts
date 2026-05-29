@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isStudioAvailable } from '@/lib/availability'
-import { updateCalendarEvent } from '@/lib/google-calendar'
+import { updateCalendarEvent,deleteCalendarEvent } from '@/lib/google-calendar'
 
 export async function PATCH(
   req: NextRequest,
@@ -69,6 +69,23 @@ export async function DELETE(
   const id = Number(params.id)
   await prisma.absence.deleteMany({ where: { bookingId: id } })
   await prisma.facultyAttendance.deleteMany({ where: { bookingId: id } })
+const booking = await prisma.booking.findUnique({
+  where: { id }
+})
+
+if (booking?.googleEventId) {
+  console.log('Deleting Google event:', booking.googleEventId)
+
+  try {
+    await deleteCalendarEvent(
+      booking.googleEventId
+    )
+
+    console.log('Google event deleted successfully')
+  } catch (err) {
+    console.error('Google delete failed:', err)
+  }
+}
   await prisma.booking.update({ where: { id }, data: { status: 'cancelled' } })
   return NextResponse.json({ success: true })
 }

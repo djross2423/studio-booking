@@ -60,3 +60,11 @@ export async function updateCalendarEvent(
 
   return event.data
 }
+export async function deleteCalendarEvent(
+  eventId: string
+) {
+  await calendar.events.delete({
+    calendarId: process.env.GOOGLE_CALENDAR_ID,
+    eventId
+  })
+}
