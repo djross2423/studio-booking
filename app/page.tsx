@@ -27,7 +27,12 @@ const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 const DURATIONS = [1,2,3,4,5,6]
 const BATCH_COLORS = ['#F59E0B','#EF4444','#3B82F6','#EC4899','#14B8A6','#F97316','#84CC16']
 
-function fmtDate(d: Date) { return d.toISOString().split('T')[0] }
+function fmtDate(d: Date) {
+  const offset = d.getTimezoneOffset()
+  return new Date(d.getTime() - offset * 60000)
+    .toISOString()
+    .split('T')[0]
+}
 function fmtTime12(iso: string) {
   const d = new Date(iso)
   return d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true })
