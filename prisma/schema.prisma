@@ -11,6 +11,7 @@ model Client {
   name         String
   phone        String?
   notes        String?
+  active       Boolean          @default(true)
   createdAt    DateTime         @default(now())
   bookings     Booking[]
   enrolments   BatchEnrolment[]
@@ -22,9 +23,24 @@ model Faculty {
   id          Int                  @id @default(autoincrement())
   name        String
   phone       String?
+  active       Boolean          @default(true)
   createdAt   DateTime             @default(now())
   batches     Batch[]
   attendance  FacultyAttendance[]
+}
+
+model Course {
+  id              Int      @id @default(autoincrement())
+  name            String
+  totalSessions   Int
+  sessionDuration Float
+  fee             Float
+  color           String   @default("#6C3CE1")
+  description     String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  batches         Batch[]
 }
 
 model Batch {
@@ -40,6 +56,8 @@ model Batch {
   status      String           @default("active")
   facultyId   Int?
   faculty     Faculty?         @relation(fields: [facultyId], references: [id])
+  courseId    Int?
+  course      Course?          @relation(fields: [courseId], references: [id])
   createdAt   DateTime         @default(now())
   bookings    Booking[]
   enrolments  BatchEnrolment[]
@@ -55,8 +73,8 @@ model BatchEnrolment {
 
 model Booking {
   id                Int                  @id @default(autoincrement())
-  clientId          Int
-  client            Client               @relation(fields: [clientId], references: [id])
+  clientId          Int?
+  client            Client?               @relation(fields: [clientId], references: [id])
   room              String
   startTime         DateTime
   endTime           DateTime

@@ -10,11 +10,12 @@ const BATCH_COLORS = [
 export async function GET() {
   const batches = await prisma.batch.findMany({
     where: { status: 'active' },
-    include: {
-      enrolments: { include: { client: true } },
-      bookings: { where: { status: 'confirmed' }, orderBy: { startTime: 'asc' } },
-      faculty: true
-    },
+include: {
+  enrolments: { include: { client: true } },
+  bookings: { where: { status: 'confirmed' }, orderBy: { startTime: 'asc' } },
+  faculty: true,
+  course: true
+},
     orderBy: { createdAt: 'desc' }
   })
   return NextResponse.json(batches)
@@ -22,7 +23,18 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { name, room, startTime, duration, repeatDays, startDate, clientIds, totalSessions, facultyId } = body
+const {
+  name,
+  room,
+  startTime,
+  duration,
+  repeatDays,
+  startDate,
+  clientIds,
+  totalSessions,
+  facultyId,
+  courseId
+} = body
 
   if (!name || !room || !startTime || !duration || !repeatDays || !startDate) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -70,27 +82,28 @@ export async function POST(req: NextRequest) {
 
   const batchCount = await prisma.batch.count()
   const color = BATCH_COLORS[batchCount % BATCH_COLORS.length]
-  const representativeClientId = clientIds[0]
 
   const batch = await prisma.batch.create({
     data: {
       name, room, startTime, duration: Number(duration),
       repeatDays, startDate, endDate, color,
-      ...(facultyId ? { facultyId: Number(facultyId) } : {}),
+...(facultyId ? { facultyId: Number(facultyId) } : {}),
+...(courseId ? { courseId: Number(courseId) } : {}),
       enrolments: { create: clientIds.map((id: number) => ({ clientId: id })) },
       bookings: {
         create: sessions.map(s => ({
-          clientId: representativeClientId,
+          clientId: null,
           room, startTime: s.start, endTime: s.end,
           status: 'confirmed', notes: name,
         }))
       }
     },
-    include: {
-      enrolments: { include: { client: true } },
-      bookings: { orderBy: { startTime: 'asc' } },
-      faculty: true
-    }
+include: {
+  enrolments: { include: { client: true } },
+  bookings: { orderBy: { startTime: 'asc' } },
+  faculty: true,
+  course: true
+}
   })
 
 for (const booking of batch.bookings) {

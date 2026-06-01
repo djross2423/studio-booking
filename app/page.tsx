@@ -1,24 +1,59 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type CSSProperties } from 'react'
 
 type Client = { id: number; name: string; phone?: string; _count?: { absences: number } }
 type Booking = {
-  id: number; clientId: number; client: Client
-  room: string; startTime: string; endTime: string
-  status: string; notes?: string; batchId?: number; batch?: Batch
+  id: number
+  clientId?: number | null
+  client?: Client | null
+  room: string
+  startTime: string
+  endTime: string
+  status: string
+  notes?: string
+  batchId?: number
+  batch?: Batch
 }
 type BatchEnrolment = { id: number; clientId: number; client: Client }
 type Faculty = { id: number; name: string; phone?: string; batches?: {id:number;name:string;color:string}[]; _count?: { attendance: number } }
 type FacultyAttendanceRecord = { id:number; facultyId:number; bookingId:number; present:boolean; booking:{startTime:string;endTime:string;batchId?:number} }
 type Batch = {
-  id: number; name: string; room: string; startTime: string
-  duration: number; repeatDays: string; startDate: string; endDate: string
-  color: string; status: string; facultyId?: number; faculty?: Faculty
+  id: number
+  name: string
+  room: string
+  startTime: string
+  duration: number
+  repeatDays: string
+  startDate: string
+  endDate: string
+  color: string
+  status: string
+
+  facultyId?: number
+  faculty?: Faculty
+
+  courseId?: number
+  course?: {
+    id: number
+    name: string
+    totalSessions: number
+    sessionDuration: number
+    fee: number
+  }
+
   enrolments: BatchEnrolment[]
   bookings: Booking[]
 }
-
+type Course = {
+  id: number
+  name: string
+  totalSessions: number
+  sessionDuration: number
+  fee: number
+  color: string
+  description?: string | null
+}
 const ROOMS = [
   { value: 'dj_classroom', label: '🎧 DJ Classroom' },
   { value: 'control_room', label: '🎙️ Control Room' },
@@ -60,7 +95,7 @@ function fmtDateLabel(dateStr: string) {
   return new Date(dateStr+'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})
 }
 
-const S: Record<string,React.CSSProperties> = {
+const S: Record<string, CSSProperties> = {
   app: { maxWidth:480, margin:'0 auto', minHeight:'100vh', fontFamily:"'Inter',system-ui,sans-serif", background:'#0F0F14', color:'#F5F5F7' },
   header: { background:'linear-gradient(135deg,#5B21B6 0%,#6C3CE1 50%,#8B5CF6 100%)', padding:'16px 20px 24px', borderRadius:'0 0 24px 24px', position:'sticky', top:0, zIndex:50, boxShadow:'0 8px 32px rgba(108,60,225,0.3)' },
   page: { padding:'20px', paddingBottom:100 },
@@ -73,7 +108,8 @@ const S: Record<string,React.CSSProperties> = {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<'dashboard'|'calendar'|'batches'|'students'|'faculty'>('dashboard')
+const [tab, setTab] = useState<'dashboard'|'calendar'|'batches'|'students'|'fees'|'faculty'|'courses'>('dashboard')
+const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [allBookings, setAllBookings] = useState<Booking[]>([])
   const [batches, setBatches] = useState<Batch[]>([])
   const [clients, setClients] = useState<Client[]>([])
@@ -87,7 +123,19 @@ export default function App() {
   const [absences, setAbsences] = useState<{id:number;clientId:number;bookingId:number;booking:{startTime:string;endTime:string;batchId?:number}}[]>([])
   const [absenceLoading, setAbsenceLoading] = useState(false)
   const [faculties, setFaculties] = useState<Faculty[]>([])
-  const [facultyAttendanceModal, setFacultyAttendanceModal] = useState<Faculty|null>(null)
+  const [courses, setCourses] = useState<Course[]>([])
+
+const [showCourseModal, setShowCourseModal] = useState(false)
+const [editingCourseId, setEditingCourseId] = useState<number | null>(null)
+
+const [courseName, setCourseName] = useState('')
+const [courseDescription, setCourseDescription] = useState('')
+const [courseFee, setCourseFee] = useState('')
+const [courseSessions, setCourseSessions] = useState('')
+const [courseDuration, setCourseDuration] = useState('')
+const [courseColor, setCourseColor] = useState('#6C3CE1')
+  
+const [facultyAttendanceModal, setFacultyAttendanceModal] = useState<Faculty|null>(null)
   const [facultyAttendance, setFacultyAttendance] = useState<FacultyAttendanceRecord[]>([])
   const [editingFacultyId, setEditingFacultyId] = useState<number|null>(null)
   const [editFacultyName, setEditFacultyName] = useState('')
@@ -110,7 +158,17 @@ export default function App() {
 
   // Batch modal
   const [showBatchModal, setShowBatchModal] = useState(false)
-  const [batchForm, setBatchForm] = useState({ name:'', room:'dj_classroom', dayPair:'' as ''|'tue-thu'|'wed-fri'|'sat-sun', timeSlot:'' as ''|'10:00'|'12:00'|'14:00'|'16:00'|'18:00'|'20:00', startDate:fmtDate(new Date()), clientIds:[] as number[], facultyId:'' })
+
+  const [batchForm, setBatchForm] = useState({
+    name:'',
+    room:'dj_classroom',
+    dayPair:'' as ''|'tue-thu'|'wed-fri'|'sat-sun',
+    timeSlot:'' as ''|'10:00'|'12:00'|'14:00'|'16:00'|'18:00'|'20:00',
+    startDate:fmtDate(new Date()),
+    clientIds:[] as number[],
+    facultyId:'',
+    courseId:''
+  })
   const [batchClientSearch, setBatchClientSearch] = useState('')
   const [batchClients, setBatchClients] = useState<Client[]>([])
   const [selectedBatch, setSelectedBatch] = useState<Batch|null>(null)
@@ -161,9 +219,18 @@ export default function App() {
     const res = await fetch('/api/batches')
     if (res.ok) setBatches(await res.json())
   }, [])
+const loadCourses = useCallback(async () => {
+  const res = await fetch('/api/courses')
+  if (res.ok) setCourses(await res.json())
+}, [])
 
-  useEffect(() => { loadBookings(); loadBatches(); loadAllClients(); loadFaculties() }, [loadBookings, loadBatches, loadAllClients, loadFaculties])
-
+useEffect(() => {
+  loadBookings()
+  loadBatches()
+  loadAllClients()
+  loadFaculties()
+  loadCourses()
+}, [loadBookings, loadBatches, loadAllClients, loadFaculties, loadCourses])
   useEffect(() => {
     if (!showBookingModal) return
     const t = setTimeout(async () => {
@@ -213,12 +280,26 @@ export default function App() {
     setBookingForm({ clientId:'', room:'dj_classroom', type:'demo', date:selectedDate||fmtDate(new Date()), startTime:'10:00', duration:'2', notes:'' })
     setClientSearch(''); setFormError(''); setShowNewClient(false); setShowAddMenu(false); setShowBookingModal(true)
   }
-  function openEdit(b: Booking) {
-    setEditBooking(b)
-    const d=new Date(b.startTime), pad=(n:number)=>String(n).padStart(2,'0')
-    setBookingForm({ clientId:String(b.clientId), room:b.room, type:(b as any).sessionType||'demo', date:fmtDate(d), startTime:`${pad(d.getHours())}:${pad(d.getMinutes())}`, duration:String(getDur(b.startTime,b.endTime)), notes:b.notes??'' })
-    setClientSearch(b.client.name); setFormError(''); setShowBookingModal(true)
-  }
+function openEdit(b: Booking) {
+  setEditBooking(b)
+
+  const d = new Date(b.startTime)
+  const pad = (n: number) => String(n).padStart(2, '0')
+
+  setBookingForm({
+    clientId: b.clientId ? String(b.clientId) : '',
+    room: b.room,
+    type: (b as any).sessionType || 'demo',
+    date: fmtDate(d),
+    startTime: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+    duration: String(getDur(b.startTime, b.endTime)),
+    notes: b.notes ?? ''
+  })
+
+  setClientSearch(b.client?.name || '')
+  setFormError('')
+  setShowBookingModal(true)
+}
   async function handleBookingSubmit() {
     if (!bookingForm.clientId||!bookingForm.date||!bookingForm.startTime) { setFormError('Please fill in required fields'); return }
     setLoading(true); setFormError('')
@@ -275,7 +356,11 @@ export default function App() {
     if (!batchForm.dayPair) { setFormError('Select a day pair'); return }
     if (!batchForm.timeSlot) { setFormError('Select a time slot'); return }
     if (!batchForm.startDate) { setFormError('Select a start date'); return }
-    if (batchForm.clientIds.length===0) { setFormError('Add at least one student'); return }
+if (!batchForm.courseId) {
+  setFormError('Select a course')
+  return
+}    
+if (batchForm.clientIds.length===0) { setFormError('Add at least one student'); return }
     // Validate start date falls on one of the selected days
     const startDay = new Date(batchForm.startDate + 'T00:00:00').getDay()
     const days = getDayPairDays(batchForm.dayPair)
@@ -285,26 +370,33 @@ export default function App() {
       return
     }
     setLoading(true); setFormError('')
-    const batchCount = batches.length
-    const name = batchForm.name || autoName(batchForm.dayPair, batchCount)
-    const body = {
+const batchCount = batches.length
+
+const name = batchForm.name || autoName(
+  batchForm.dayPair,
+  batchCount
+)
+
+const body = {
       name,
       room: batchForm.room,
       startTime: batchForm.timeSlot,
-      duration: 2,
+duration: selectedCourse!.sessionDuration,
       repeatDays: days.join(','),
       startDate: batchForm.startDate,
       endDate: '',
       clientIds: batchForm.clientIds,
-      totalSessions: 16,
+totalSessions: selectedCourse!.totalSessions,
       facultyId: batchForm.facultyId ? Number(batchForm.facultyId) : undefined,
-    }
+courseId: Number(batchForm.courseId),    
+}
     const res = await fetch('/api/batches', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
     const data = await res.json(); setLoading(false)
     if (!res.ok) { setFormError(data.error); return }
     setShowBatchModal(false); loadBookings(); loadBatches()
-    showToast('Batch created! 16 sessions booked.')
-  }
+showToast(
+  `Batch created! ${selectedCourse!.totalSessions} sessions booked.`
+)  }
   async function handleCancelBatch(id: number) {
     if (!confirm('Delete this batch and ALL its sessions? This cannot be undone.')) return
     await fetch(`/api/batches/${id}`, { method:'DELETE' })
@@ -327,7 +419,7 @@ export default function App() {
 
   const allFiltered = allBookings
     .filter(b => roomFilter==='all'||b.room===roomFilter)
-    .filter(b => !searchQ||b.client.name.toLowerCase().includes(searchQ.toLowerCase()))
+    .filter(b => !searchQ || (b.client?.name || '').toLowerCase().includes(searchQ.toLowerCase()))
   const todayMidnight = new Date(); todayMidnight.setHours(0,0,0,0)
   const upcomingBookings = allFiltered
     .filter(b => new Date(b.startTime) >= todayMidnight)
@@ -347,6 +439,9 @@ const groupedBookings = filteredBookings.reduce((acc, booking) => {
 
   return acc
 }, {} as Record<string, Booking[]>)
+const selectedCourse = courses.find(
+  c => c.id === Number(batchForm.courseId)
+)
 
   function DatePickerInput({ value, onChange, room }: { value:string; onChange:(d:string)=>void; room:string }) {
     const [open, setOpen] = useState(false)
@@ -483,8 +578,34 @@ const groupedBookings = filteredBookings.reduce((acc, booking) => {
             </div>
           ) : (
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-              <div style={{ width:32, height:32, borderRadius:8, background:avatarColor(b.client.name), display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:12, color:'white', flexShrink:0 }}>{getInitials(b.client.name)}</div>
-              <div style={{ fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.client.name}</div>
+<div
+  style={{
+    width:32,
+    height:32,
+    borderRadius:8,
+    background:avatarColor(b.client?.name || 'Unknown'),
+    display:'flex',
+    alignItems:'center',
+    justifyContent:'center',
+    fontWeight:700,
+    fontSize:12,
+    color:'white',
+    flexShrink:0
+  }}
+>
+  {getInitials(b.client?.name || 'Unknown')}
+</div>
+
+<div
+  style={{
+    fontWeight:600,
+    overflow:'hidden',
+    textOverflow:'ellipsis',
+    whiteSpace:'nowrap'
+  }}
+>
+  {b.client?.name || 'Unknown Student'}
+</div>
             </div>
           )}
           <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
@@ -677,8 +798,16 @@ const groupedBookings = filteredBookings.reduce((acc, booking) => {
             <>
               <button onClick={()=>setSelectedBatch(null)} style={{ background:'none', border:'none', color:'#8B5CF6', fontSize:14, fontWeight:600, cursor:'pointer', padding:'0 0 16px', display:'flex', alignItems:'center', gap:4 }}>‹ All Batches</button>
               <div style={{ ...S.card, borderLeft:`4px solid ${selectedBatch.color}` }}>
-                <h2 style={{ margin:'0 0 4px', fontSize:18, fontWeight:700 }}>{selectedBatch.name}</h2>
-                <div style={{ fontSize:13, color:'#9CA3AF', marginBottom:8 }}>{roomBadge(selectedBatch.room).label} · {(() => { const [h,m]=selectedBatch.startTime.split(':').map(Number); const ampm=h>=12?'PM':'AM'; const h12=h%12||12; return h12+':'+(m<10?'0'+m:m)+' '+ampm })() } · {selectedBatch.duration}h</div>
+{selectedBatch.course && (
+  <div style={{
+    color:'#A78BFA',
+    fontSize:13,
+    fontWeight:600,
+    marginBottom:6
+  }}>
+    📘 {selectedBatch.course.name}
+  </div>
+)}                <div style={{ fontSize:13, color:'#9CA3AF', marginBottom:8 }}>{roomBadge(selectedBatch.room).label} · {(() => { const [h,m]=selectedBatch.startTime.split(':').map(Number); const ampm=h>=12?'PM':'AM'; const h12=h%12||12; return h12+':'+(m<10?'0'+m:m)+' '+ampm })() } · {selectedBatch.duration}h</div>
                 <div style={{ fontSize:13, color:'#9CA3AF', marginBottom:8 }}>
                   {selectedBatch.repeatDays.split(',').map(d=>DAYS[Number(d)]).join(', ')} · {selectedBatch.startDate} → {selectedBatch.endDate}
                 </div>
@@ -708,8 +837,17 @@ const groupedBookings = filteredBookings.reduce((acc, booking) => {
                         <div key={c.id} onClick={async()=>{
                           const res = await fetch('/api/batches/'+selectedBatch.id, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({addClientId:c.id})})
                           const data = await res.json()
-                          if(res.ok){ setSelectedBatch(data); loadBatches(); setShowAddStudent(false); showToast(c.name+' added to batch') }
-                          else showToast(data.error||'Error adding student')
+if(res.ok){
+  setSelectedBatch(data)
+  loadBatches()
+
+  setAddStudentSearch('')
+  setAddStudentResults([])
+
+  setShowAddStudent(false)
+
+  showToast(c.name + ' added to batch')
+}                          else showToast(data.error||'Error adding student')
                         }} style={{ padding:'10px 12px', cursor:'pointer', borderBottom:'1px solid #2A2A3D', fontSize:14, color:'#F5F5F7', display:'flex', alignItems:'center', gap:8 }}>
                           <div style={{ width:28, height:28, borderRadius:8, background:avatarColor(c.name), display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:11, color:'white' }}>{getInitials(c.name)}</div>
                           {c.name}
@@ -727,10 +865,15 @@ const groupedBookings = filteredBookings.reduce((acc, booking) => {
                     ))}
                   </div>
                 </div>
-                <div style={{ fontSize:12, fontWeight:600, color:'#9CA3AF', marginBottom:8 }}>UPCOMING SESSIONS ({selectedBatch.bookings.filter(b=>new Date(b.startTime)>=new Date()).length})</div>
+                <div style={{ fontSize:12, fontWeight:600, color:'#9CA3AF', marginBottom:8 }}>UPCOMING SESSIONS ({selectedBatch.bookings.filter(
+  b => new Date(b.endTime) > new Date()
+).length})</div>
                 {(() => {
-                  const todayM = new Date(); todayM.setHours(0,0,0,0)
-                  const upcoming = selectedBatch.bookings.filter(b=>new Date(b.startTime)>=todayM)
+const now = new Date()
+
+const upcoming = selectedBatch.bookings.filter(
+  b => new Date(b.endTime) > now
+)
                   return upcoming.slice(0,10).map((b,i)=>(
                     <div key={b.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 0', borderBottom:'1px solid #2A2A3D', fontSize:13 }}>
                       <div>
@@ -743,7 +886,19 @@ const groupedBookings = filteredBookings.reduce((acc, booking) => {
                             if(!confirm('Push all '+upcoming.length+' sessions forward by one batch day?')) return
                             const res = await fetch('/api/batches/'+selectedBatch.id+'/push', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fromBookingId:b.id})})
                             const data = await res.json()
-                            if(res.ok){ loadBookings(); loadBatches(); showToast(data.shifted+' sessions pushed forward') }
+
+if(res.ok){
+  await loadBookings()
+  await loadBatches()
+
+  const refreshed = await fetch('/api/batches/' + selectedBatch.id)
+
+  if(refreshed.ok){
+    setSelectedBatch(await refreshed.json())
+  }
+
+  showToast(data.shifted + ' sessions pushed forward')
+}
                             else showToast(data.error || 'Error pushing sessions')
                           }} style={{ background:'rgba(245,158,11,0.15)', border:'1px solid rgba(245,158,11,0.3)', color:'#F59E0B', borderRadius:8, padding:'4px 8px', fontSize:11, fontWeight:600, cursor:'pointer' }}>Push all</button>
                         )}
@@ -751,7 +906,18 @@ const groupedBookings = filteredBookings.reduce((acc, booking) => {
                           if(!confirm('Push all sessions from this date forward?')) return
                           const res = await fetch('/api/batches/'+selectedBatch.id+'/push', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fromBookingId:b.id})})
                           const data = await res.json()
-                          if(res.ok){ loadBookings(); loadBatches(); showToast(data.shifted+' sessions pushed forward') }
+if(res.ok){
+  await loadBookings()
+  await loadBatches()
+
+  const refreshed = await fetch('/api/batches/' + selectedBatch.id)
+
+  if(refreshed.ok){
+    setSelectedBatch(await refreshed.json())
+  }
+
+  showToast(data.shifted + ' sessions pushed forward')
+}
                           else showToast(data.error || 'Error pushing sessions')
                         }} style={{ background:'rgba(108,60,225,0.15)', border:'1px solid rgba(108,60,225,0.3)', color:'#8B5CF6', borderRadius:8, padding:'4px 8px', fontSize:11, fontWeight:600, cursor:'pointer' }}>Push from here</button>
                         <button onClick={()=>handleBookingDelete(b.id)} style={{ background:'none', border:'none', color:'#EF4444', fontSize:12, cursor:'pointer', padding:'4px 8px' }}>Cancel</button>
@@ -771,8 +937,25 @@ const groupedBookings = filteredBookings.reduce((acc, booking) => {
               {batches.length===0 ? <EmptyState text="No active batches" /> : batches.map(batch=>(
                 <div key={batch.id} onClick={()=>setSelectedBatch(batch)} style={{ ...S.card, borderLeft:`4px solid ${batch.color}`, cursor:'pointer' }}>
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-                    <div>
-                      <div style={{ fontWeight:700, fontSize:15, marginBottom:4 }}>{batch.name}</div>
+<div>
+  {batch.course && (
+    <div style={{
+      fontSize:12,
+      fontWeight:600,
+      color:'#A78BFA',
+      marginBottom:4
+    }}>
+      📘 {batch.course.name}
+    </div>
+  )}
+
+  <div style={{
+    fontWeight:700,
+    fontSize:15,
+    marginBottom:4
+  }}>
+    {batch.name}
+  </div>
                       <div style={{ fontSize:13, color:'#9CA3AF', marginBottom:6 }}>{roomBadge(batch.room).label} · {(() => { const [h,m]=batch.startTime.split(':').map(Number); const ampm=h>=12?'PM':'AM'; const h12=h%12||12; return h12+':'+(m<10?'0'+m:m)+' '+ampm })() } · {batch.duration}h{batch.faculty ? <span style={{color:'#A78BFA'}}> · 🎓 {batch.faculty.name}</span> : null}</div>
                       <div style={{ fontSize:12, color:'#6B7280' }}>{batch.repeatDays.split(',').map(d=>DAYS[Number(d)]).join(', ')} · until {batch.endDate}</div>
                     </div>
@@ -855,12 +1038,139 @@ const groupedBookings = filteredBookings.reduce((acc, booking) => {
         </div>
       )}
 
+      {showMoreMenu && (
+        <>
+          <div
+            onClick={() => setShowMoreMenu(false)}
+            style={{
+              position:'fixed',
+              inset:0,
+              zIndex:140
+            }}
+          />
+
+          <div
+            style={{
+              position:'fixed',
+              bottom:80,
+              right:16,
+              width:220,
+              background:'#1A1A24',
+              border:'1px solid #2A2A3D',
+              borderRadius:16,
+              overflow:'hidden',
+              zIndex:150,
+              boxShadow:'0 10px 30px rgba(0,0,0,0.35)',
+              opacity:1
+            }}
+          >
+<button
+  onClick={()=>{
+    setShowMoreMenu(false)
+    loadAllClients()
+    setTab('students')
+  }}
+  style={{
+    width:'100%',
+    padding:'14px 16px',
+    background:'none',
+    border:'none',
+    color:'#F5F5F7',
+    textAlign:'left',
+    cursor:'pointer'
+  }}
+>
+  👥 Students
+</button>
+            <button
+              onClick={()=>{
+                setShowMoreMenu(false)
+                loadFaculties()
+                setTab('faculty')
+              }}
+              style={{
+                width:'100%',
+                padding:'14px 16px',
+                background:'none',
+                border:'none',
+                color:'#F5F5F7',
+                textAlign:'left',
+                cursor:'pointer'
+              }}
+            >
+              🎓 Faculty
+            </button>
+
+            <button
+onClick={()=>{
+  setShowMoreMenu(false)
+  setTab('courses')
+}}              style={{
+                width:'100%',
+                padding:'14px 16px',
+                background:'none',
+                border:'none',
+                color:'#F5F5F7',
+                textAlign:'left',
+                cursor:'pointer'
+              }}
+            >
+              📘 Courses
+            </button>
+
+            <button
+              onClick={()=>{
+                setShowMoreMenu(false)
+                showToast('Enrollment coming soon')
+              }}
+              style={{
+                width:'100%',
+                padding:'14px 16px',
+                background:'none',
+                border:'none',
+                color:'#F5F5F7',
+                textAlign:'left',
+                cursor:'pointer'
+              }}
+            >
+              📝 Enrollment
+            </button>
+          </div>
+        </>
+      )}
+
       {/* Tab bar */}
       <div style={S.tabBar}>
-        {([['dashboard','Home','🏠'],['calendar','Booking Calendar','📅'],['batches','Batches','📚'],['students','Students','👥'],['faculty','Faculty','🎓']] as const).map(([id,label,icon])=>(
-          <button key={id} onClick={()=>{ setTab(id); if(id==='students') loadAllClients(); if(id==='faculty') loadFaculties() }} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, padding:'8px 16px', borderRadius:12, border:'none', background:tab===id?'rgba(108,60,225,0.15)':'transparent', color:tab===id?'#8B5CF6':'#9CA3AF', fontSize:11, fontWeight:500, cursor:'pointer' }}>
-            <span style={{ fontSize:20 }}>{icon}</span>{label}
-          </button>
+        {([['dashboard','Home','🏠'],['calendar','Calendar','📅'],['batches','Batches','📚'],['fees','Fees','💰'],['more','More','⋯']] as const).map(([id,label,icon])=>(
+<button
+  key={id}
+  onClick={()=>{
+    if(id==='more'){
+      setShowMoreMenu(v=>!v)
+      return
+    }
+
+    setTab(id)
+  }}
+  style={{
+    flex:1,
+    display:'flex',
+    flexDirection:'column',
+    alignItems:'center',
+    gap:4,
+    padding:'8px 6px',
+    borderRadius:12,
+    border:'none',
+    background:tab===id ? 'rgba(108,60,225,0.15)' : 'transparent',
+    color:tab===id ? '#8B5CF6' : '#9CA3AF',
+    fontSize:11,
+    fontWeight:500,
+    cursor:'pointer'
+  }}
+>
+  <span style={{ fontSize:20 }}>{icon}</span>
+  {label}
+</button>
         ))}
       </div>
 
@@ -974,14 +1284,37 @@ const groupedBookings = filteredBookings.reduce((acc, booking) => {
                 const day = new Date(batchForm.startDate+'T00:00:00').getDay()
                 const days = getDayPairDays(batchForm.dayPair)
                 const ok = days.includes(day)
-                const endDate = (() => {
-                  if (!ok) return null
-                  let count=0, cur=new Date(batchForm.startDate+'T00:00:00')
-                  while(count<16){ if(days.includes(cur.getDay())) count++; if(count<16) cur.setDate(cur.getDate()+1) }
-                  return cur.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})
-                })()
+const endDate = (() => {
+  if (!ok) return null
+
+  let count = 0
+  const totalSessions = selectedCourse?.totalSessions || 0
+
+  let cur = new Date(
+    batchForm.startDate + 'T00:00:00'
+  )
+
+  while (count < totalSessions) {
+    if (days.includes(cur.getDay())) {
+      count++
+    }
+
+    if (count < totalSessions) {
+      cur.setDate(cur.getDate() + 1)
+    }
+  }
+
+  return cur.toLocaleDateString(
+    'en-IN',
+    {
+      day:'numeric',
+      month:'short',
+      year:'numeric'
+    }
+  )
+})()
                 return ok
-                  ? <div style={{ fontSize:12, color:'#34D399', marginTop:6 }}>✓ 16 sessions · ends {endDate}</div>
+                  ? <div style={{ fontSize:12, color:'#34D399', marginTop:6 }}>✓ {selectedCourse?.totalSessions} sessions · ends {endDate}</div>
                   : <div style={{ fontSize:12, color:'#EF4444', marginTop:6 }}>⚠ Pick a {batchForm.dayPair==='tue-thu'?'Tuesday or Thursday':batchForm.dayPair==='wed-fri'?'Wednesday or Friday':'Saturday or Sunday'}</div>
               })()}
             </div>
@@ -991,10 +1324,33 @@ const groupedBookings = filteredBookings.reduce((acc, booking) => {
               <label style={S.label}>Batch Name <span style={{ color:'#6B7280', fontWeight:400 }}>(auto-generated)</span></label>
               <input value={batchForm.name} onChange={e=>setBatchForm(f=>({...f,name:e.target.value}))} placeholder="e.g. DJ Weekday Batch 3" style={S.input} />
             </div>
-
-            {/* Faculty */}
             <div style={{ marginBottom:20 }}>
-              <label style={S.label}>Faculty (optional)</label>
+<div style={{ marginBottom:20 }}>
+  <label style={S.label}>Course *</label>
+
+  <select
+    value={batchForm.courseId}
+    onChange={e=>
+      setBatchForm(f=>({
+        ...f,
+        courseId:e.target.value
+      }))
+    }
+    style={S.input}
+  >
+    <option value="">Select course</option>
+
+    {courses.map(course=>(
+      <option
+        key={course.id}
+        value={course.id}
+      >
+        {course.name}
+      </option>
+    ))}
+  </select>
+</div>            
+  <label style={S.label}>Faculty (optional)</label>
               <select value={batchForm.facultyId} onChange={e=>setBatchForm(f=>({...f,facultyId:e.target.value}))} style={S.input}>
                 <option value="">No faculty assigned</option>
                 {faculties.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
@@ -1008,7 +1364,26 @@ const groupedBookings = filteredBookings.reduce((acc, booking) => {
               {batchClientSearch&&(
                 <div style={{ background:'#242436', border:'1px solid #2A2A3D', borderRadius:12, marginBottom:8, overflow:'hidden' }}>
                   {batchClients.filter(c=>c.name.toLowerCase().includes(batchClientSearch.toLowerCase())).map(c=>(
-                    <div key={c.id} onClick={()=>toggleBatchClient(c.id)} style={{ padding:'12px 16px', cursor:'pointer', borderBottom:'1px solid #2A2A3D', fontSize:14, color:'#F5F5F7', display:'flex', justifyContent:'space-between', alignItems:'center', background:batchForm.clientIds.includes(c.id)?'rgba(108,60,225,0.15)':'transparent' }}>
+<div
+  key={c.id}
+  onClick={()=>{
+    toggleBatchClient(c.id)
+    setBatchClientSearch('')
+  }}
+  style={{
+    padding:'12px 16px',
+    cursor:'pointer',
+    borderBottom:'1px solid #2A2A3D',
+    fontSize:14,
+    color:'#F5F5F7',
+    display:'flex',
+    justifyContent:'space-between',
+    alignItems:'center',
+    background:batchForm.clientIds.includes(c.id)
+      ? 'rgba(108,60,225,0.15)'
+      : 'transparent'
+  }}
+>
                       <span>{c.name}</span>
                       {batchForm.clientIds.includes(c.id)&&<span style={{ color:'#8B5CF6', fontWeight:700 }}>✓</span>}
                     </div>
@@ -1028,17 +1403,315 @@ const groupedBookings = filteredBookings.reduce((acc, booking) => {
 
             {formError&&<div style={{ color:'#EF4444', fontSize:13, marginBottom:12, padding:'10px 14px', background:'rgba(239,68,68,0.1)', borderRadius:10 }}>{formError}</div>}
 
-            <div style={{ background:'rgba(108,60,225,0.1)', border:'1px solid rgba(108,60,225,0.2)', borderRadius:12, padding:'12px 14px', marginBottom:16, fontSize:13, color:'#A78BFA' }}>
-              📚 16 classes · 2 hrs each · 2 per week · ~8 weeks total
-            </div>
+{batchForm.courseId && (
+  <div style={{
+    background:'rgba(108,60,225,0.1)',
+    border:'1px solid rgba(108,60,225,0.2)',
+    borderRadius:12,
+    padding:'12px 14px',
+    marginBottom:16,
+    fontSize:13,
+    color:'#A78BFA'
+  }}>
+    {(() => {
+      const course = courses.find(
+        c => c.id === Number(batchForm.courseId)
+      )
 
-            <button onClick={handleBatchSubmit} disabled={loading} style={S.btnPrimary}>{loading?'Booking 16 sessions...':'Create Batch & Book All Sessions'}</button>
+      if (!course) return null
+
+      return (
+        <>
+          📚 {course.totalSessions} classes · {course.sessionDuration} hrs each
+        </>
+      )
+    })()}
+  </div>
+)}
+            <button onClick={handleBatchSubmit} disabled={loading} style={S.btnPrimary}>
+{loading
+  ? `Booking ${selectedCourse!.totalSessions} sessions...`
+  : 'Create Batch & Book All Sessions'}</button>
             <button onClick={()=>setShowBatchModal(false)} style={{ width:'100%', padding:12, marginTop:8, background:'none', border:'none', color:'#6B7280', fontSize:14, cursor:'pointer' }}>Cancel</button>
           </div>
         </div>
       )}
+{showCourseModal && (
+        <div
+          onClick={()=>setShowCourseModal(false)}
+          style={{
+            position:'fixed',
+            inset:0,
+            background:'rgba(0,0,0,0.7)',
+            backdropFilter:'blur(4px)',
+            zIndex:250,
+            display:'flex',
+            alignItems:'center',
+            justifyContent:'center'
+          }}
+        >
+          <div
+            onClick={e=>e.stopPropagation()}
+            style={{
+              width:'90%',
+              maxWidth:420,
+              background:'#1A1A24',
+              border:'1px solid #2A2A3D',
+              borderRadius:16,
+              padding:20
+            }}
+          >
+            <h2 style={{ margin:'0 0 16px', fontSize:18 }}>
+              Add Course
+            </h2>
 
-      {/* Faculty */}
+            <input
+              value={courseName}
+              onChange={e=>setCourseName(e.target.value)}
+              placeholder="Course Name"
+              style={{ ...S.input, marginBottom:10 }}
+            />
+
+            <textarea
+              value={courseDescription}
+              onChange={e=>setCourseDescription(e.target.value)}
+              placeholder="Description"
+              style={{
+                ...S.input,
+                minHeight:80,
+                marginBottom:10
+              }}
+            />
+
+            <input
+              value={courseFee}
+              onChange={e=>setCourseFee(e.target.value)}
+              placeholder="Course Fee"
+              style={{ ...S.input, marginBottom:10 }}
+            />
+
+            <input
+              value={courseSessions}
+              onChange={e=>setCourseSessions(e.target.value)}
+              placeholder="Total Sessions"
+              style={{ ...S.input, marginBottom:10 }}
+            />
+
+            <input
+              value={courseDuration}
+              onChange={e=>setCourseDuration(e.target.value)}
+              placeholder="Session Duration (Hours)"
+              style={{ ...S.input, marginBottom:16 }}
+            />
+
+            <button
+              onClick={async()=>{
+const url = editingCourseId
+  ? `/api/courses/${editingCourseId}`
+  : '/api/courses'
+
+const method = editingCourseId
+  ? 'PATCH'
+  : 'POST'
+
+const res = await fetch(url,{
+  method,
+  headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({
+    name:courseName,
+    description:courseDescription,
+    fee:Number(courseFee),
+    totalSessions:Number(courseSessions),
+    sessionDuration:Number(courseDuration),
+    color:courseColor
+  })
+})
+if(res.ok){
+  setCourseName('')
+  setCourseDescription('')
+  setCourseFee('')
+  setCourseSessions('')
+  setCourseDuration('')
+
+  setEditingCourseId(null)
+
+  loadCourses()
+  setShowCourseModal(false)
+
+  showToast(
+    editingCourseId
+      ? 'Course updated'
+      : 'Course created'
+  )
+} 
+                else {
+                  showToast('Failed to create course')
+                }
+              }}
+              style={S.btnPrimary}
+            >
+              Save Course
+            </button>
+
+            <button
+onClick={()=>{
+  setEditingCourseId(null)
+  setShowCourseModal(false)
+}}
+              style={{
+                width:'100%',
+                padding:12,
+                marginTop:8,
+                background:'none',
+                border:'none',
+                color:'#6B7280',
+                cursor:'pointer'
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+
+{/* Courses */}
+      {tab==='courses' && (
+        <div style={S.page}>
+<div style={{
+  display:'flex',
+  justifyContent:'space-between',
+  alignItems:'center',
+  marginBottom:16
+}}>
+  <h2 style={{ margin:0, fontSize:17, fontWeight:700 }}>
+    Courses
+  </h2>
+
+  <button
+    onClick={()=>setShowCourseModal(true)}
+    style={{
+      background:'linear-gradient(135deg,#6C3CE1,#8B5CF6)',
+      border:'none',
+      borderRadius:10,
+      padding:'8px 14px',
+      color:'white',
+      fontSize:13,
+      fontWeight:600,
+      cursor:'pointer'
+    }}
+  >
+    + Add Course
+  </button>
+</div>
+          {courses.map(course => (
+            <div
+              key={course.id}
+              style={{
+                background:'#1A1A24',
+                border:'1px solid #2A2A3D',
+                borderRadius:16,
+                padding:16,
+                marginBottom:12
+              }}
+            >
+              <div style={{
+                fontSize:16,
+                fontWeight:700,
+                marginBottom:8
+              }}>
+                {course.name}
+              </div>
+
+              <div style={{
+                fontSize:13,
+                color:'#9CA3AF',
+                lineHeight:1.8
+              }}>
+                📚 {course.totalSessions} Sessions
+                <br />
+                ⏱ {course.sessionDuration} Hours
+                <br />
+                💰 ₹{course.fee.toLocaleString()}
+              </div>
+<div style={{
+  display:'flex',
+  gap:8,
+  marginTop:12
+}}>
+
+<button
+  onClick={()=>{
+    setEditingCourseId(course.id)
+
+    setCourseName(course.name)
+    setCourseDescription(course.description || '')
+    setCourseFee(String(course.fee))
+    setCourseSessions(String(course.totalSessions))
+    setCourseDuration(String(course.sessionDuration))
+
+    setShowCourseModal(true)
+  }}
+  style={{
+    flex:1,
+    background:'rgba(108,60,225,0.15)',
+    border:'1px solid rgba(108,60,225,0.3)',
+    color:'#8B5CF6',
+    borderRadius:10,
+    padding:'10px',
+    cursor:'pointer'
+  }}
+>
+  Edit
+</button>
+
+<button
+  onClick={async()=>{
+    if(!confirm(`Archive "${course.name}"?`)) return
+
+    const res = await fetch(
+      `/api/courses/${course.id}`,
+      { method:'DELETE' }
+    )
+
+    if(res.ok){
+      loadCourses()
+      showToast('Course archived')
+    } else {
+      showToast('Archive failed')
+    }
+  }}
+  style={{
+    flex:1,
+    background:'rgba(239,68,68,0.15)',
+    border:'1px solid rgba(239,68,68,0.3)',
+    color:'#EF4444',
+    borderRadius:10,
+    padding:'10px',
+    cursor:'pointer'
+  }}
+>
+  Archive
+</button>
+
+
+</div>          
+  </div>
+          ))}
+
+          {courses.length===0 && (
+            <div style={{
+              textAlign:'center',
+              padding:'40px 20px',
+              color:'#6B7280'
+            }}>
+              No courses yet
+            </div>
+          )}
+        </div>
+)}
+
+{/* Faculty */}
       {tab==='faculty' && (
         <div style={S.page}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
