@@ -1,16 +1,22 @@
 import { PrismaClient } from '@prisma/client'
-import { PrismaLibSql } from '@prisma/adapter-libsql'
-import path from 'path'
+import { PrismaNeon } from '@prisma/adapter-neon'
+import { Pool } from '@neondatabase/serverless'
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
 
-function createPrismaClient() {
-  const adapter = new PrismaLibSql({
-    url: `file:${path.join(process.cwd(), 'prisma/studio.db')}`,
-  })
-  return new PrismaClient({ adapter } as any)
+let prismaInstance: PrismaClient
+
+if (process.env.NODE_ENV === 'production') {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+  const adapter = new PrismaNeon(pool)
+  prismaInstance = new PrismaClient({ adapter })
+} else {
+  if (!globalForPrisma.prisma) {
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+    const adapter = new PrismaNeon(pool)
+    globalForPrisma.prisma = new PrismaClient({ adapter })
+  }
+  prismaInstance = globalForPrisma.prisma
 }
 
-export const prisma = globalForPrisma.prisma || createPrismaClient()
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+export const prisma = prismaInstance
