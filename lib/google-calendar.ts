@@ -14,21 +14,32 @@ const calendar = google.calendar({
   auth: oauth2Client
 })
 
-// Helper function to safely format local dates into an offset string Google understands
-// This converts the date without losing the +05:30 context
-function toLocalISOString(date: Date): string {
-  const tzo = -date.getTimezoneOffset(),
-      dif = tzo >= 0 ? '+' : '-',
-      pad = (num: number) => (num < 10 ? '0' : '') + num;
+// ⚡ DROP THE NEW FUNCTION RIGHT HERE:
+function forceIndianISOString(date: Date): string {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  const parts = formatter.formatToParts(date);
+  const getValue = (type: string) => parts.find(p => p.type === type)?.value || '';
   
-  return date.getFullYear() +
-      '-' + pad(date.getMonth() + 1) +
-      '-' + pad(date.getDate()) +
-      'T' + pad(date.getHours()) +
-      ':' + pad(date.getMinutes()) +
-      ':' + pad(date.getSeconds()) +
-      dif + pad(Math.floor(Math.abs(tzo) / 60)) +
-      ':' + pad(Math.abs(tzo) % 60);
+  const yyyy = getValue('year');
+  const mm = getValue('month');
+  const dd = getValue('day');
+  let hh = getValue('hour');
+  const min = getValue('minute');
+  const ss = getValue('second');
+
+  if (hh === '24') hh = '00';
+
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}+05:30`;
 }
 
 export async function createCalendarEvent(
@@ -43,12 +54,12 @@ export async function createCalendarEvent(
       summary: title,
       description,
       start: {
-        // Use the local offset string and explicitly target Kolkata timezone
-        dateTime: toLocalISOString(startTime),
+        // Updated to use the new bulletproof formatter
+        dateTime: forceIndianISOString(startTime),
         timeZone: 'Asia/Kolkata'
       },
       end: {
-        dateTime: toLocalISOString(endTime),
+        dateTime: forceIndianISOString(endTime),
         timeZone: 'Asia/Kolkata'
       }
     }
@@ -71,11 +82,12 @@ export async function updateCalendarEvent(
       summary: title,
       description,
       start: {
-        dateTime: toLocalISOString(startTime),
+        // Updated to use the new bulletproof formatter
+        dateTime: forceIndianISOString(startTime),
         timeZone: 'Asia/Kolkata'
       },
       end: {
-        dateTime: toLocalISOString(endTime),
+        dateTime: forceIndianISOString(endTime),
         timeZone: 'Asia/Kolkata'
       }
     }
@@ -84,9 +96,7 @@ export async function updateCalendarEvent(
   return event.data
 }
 
-export async function deleteCalendarEvent(
-  eventId: string
-) {
+export async function deleteCalendarEvent(eventId: string) {
   await calendar.events.delete({
     calendarId: process.env.GOOGLE_CALENDAR_ID,
     eventId
