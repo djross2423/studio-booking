@@ -8,7 +8,7 @@
   "build": "prisma generate && next build",
   "postinstall": "prisma generate",
   "start": "next start"
-}
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
