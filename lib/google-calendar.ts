@@ -14,6 +14,23 @@ const calendar = google.calendar({
   auth: oauth2Client
 })
 
+// Helper function to safely format local dates into an offset string Google understands
+// This converts the date without losing the +05:30 context
+function toLocalISOString(date: Date): string {
+  const tzo = -date.getTimezoneOffset(),
+      dif = tzo >= 0 ? '+' : '-',
+      pad = (num: number) => (num < 10 ? '0' : '') + num;
+  
+  return date.getFullYear() +
+      '-' + pad(date.getMonth() + 1) +
+      '-' + pad(date.getDate()) +
+      'T' + pad(date.getHours()) +
+      ':' + pad(date.getMinutes()) +
+      ':' + pad(date.getSeconds()) +
+      dif + pad(Math.floor(Math.abs(tzo) / 60)) +
+      ':' + pad(Math.abs(tzo) % 60);
+}
+
 export async function createCalendarEvent(
   title: string,
   startTime: Date,
@@ -26,16 +43,20 @@ export async function createCalendarEvent(
       summary: title,
       description,
       start: {
-        dateTime: startTime.toISOString()
+        // Use the local offset string and explicitly target Kolkata timezone
+        dateTime: toLocalISOString(startTime),
+        timeZone: 'Asia/Kolkata'
       },
       end: {
-        dateTime: endTime.toISOString()
+        dateTime: toLocalISOString(endTime),
+        timeZone: 'Asia/Kolkata'
       }
     }
   })
 
   return event.data
 }
+
 export async function updateCalendarEvent(
   eventId: string,
   title: string,
@@ -50,16 +71,19 @@ export async function updateCalendarEvent(
       summary: title,
       description,
       start: {
-        dateTime: startTime.toISOString()
+        dateTime: toLocalISOString(startTime),
+        timeZone: 'Asia/Kolkata'
       },
       end: {
-        dateTime: endTime.toISOString()
+        dateTime: toLocalISOString(endTime),
+        timeZone: 'Asia/Kolkata'
       }
     }
   })
 
   return event.data
 }
+
 export async function deleteCalendarEvent(
   eventId: string
 ) {
