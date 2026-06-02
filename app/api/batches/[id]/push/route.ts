@@ -46,7 +46,7 @@ export async function POST(
 
   const sessionsToShift = batch.bookings.slice(fromIndex)
 
-  const shiftingIds = sessionsToShift.map(s => s.id
+  const shiftingIds = sessionsToShift.map((s: any) => s.id
 )
   // Calculate new dates by shifting each session to the next batch day
   const [h, m] = batch.startTime.split(':').map(Number)
