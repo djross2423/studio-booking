@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
 
+export const dynamic = 'force-dynamic'
 type Client = {
   id: number;
   name: string;
@@ -356,6 +357,20 @@ export default function App() {
 
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
 
+function resetEnrollmentForm() {
+  setEnrollmentForm({
+    name: "",
+    phone: "",
+    courseId: "",
+    totalFee: "",
+    discount: "0",
+    initialPayment: "",
+    paymentMethod: "cash",
+  });
+
+  setEnrollmentSearch("");
+  setSelectedClientId(null);
+}
   const [batchForm, setBatchForm] = useState({
     name: "",
     room: "dj_classroom",
@@ -2711,7 +2726,10 @@ export default function App() {
             </h2>
 
             <button
-              onClick={() => setShowEnrollmentModal(true)}
+              onClick={() => {
+                resetEnrollmentForm()
+                setShowEnrollmentModal(true)
+              }}
               style={{
                 background: "linear-gradient(135deg,#6C3CE1,#8B5CF6)",
                 border: "none",
@@ -4397,8 +4415,10 @@ export default function App() {
 
       {showEnrollmentModal && (
         <div
-          onClick={() => setShowEnrollmentModal(false)}
-          style={{
+onClick={() => {
+  resetEnrollmentForm()
+  setShowEnrollmentModal(false)
+}}          style={{
             position: "fixed",
             inset: 0,
             background: "rgba(0,0,0,.7)",

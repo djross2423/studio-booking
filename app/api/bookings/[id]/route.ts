@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { isStudioAvailable } from '@/lib/availability'
 import { updateCalendarEvent,deleteCalendarEvent } from '@/lib/google-calendar'
 
+export const dynamic = 'force-dynamic'
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
