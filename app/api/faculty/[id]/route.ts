@@ -3,10 +3,14 @@ import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const { name, phone } = await req.json()
+  const { name, phone, active } = await req.json()
   const faculty = await prisma.faculty.update({
     where: { id: Number(params.id) },
-    data: { ...(name ? { name } : {}), ...(phone !== undefined ? { phone } : {}) }
+    data: {
+      ...(name ? { name } : {}),
+      ...(phone !== undefined ? { phone } : {}),
+      ...(active !== undefined ? { active } : {}),
+    }
   })
   return NextResponse.json(faculty)
 }

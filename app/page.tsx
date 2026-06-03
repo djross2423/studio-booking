@@ -266,6 +266,7 @@ export default function App() {
     | "faculty"
     | "courses"
     | "enrollment"
+    | "archives"
   >("dashboard");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
@@ -355,6 +356,13 @@ export default function App() {
 
   const [enrollmentSearch, setEnrollmentSearch] = useState("");
 
+  // Payment modal
+  const [paymentEnrollment, setPaymentEnrollment] = useState<Enrollment | null>(
+    null,
+  );
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
 
 function resetEnrollmentForm() {
@@ -406,6 +414,11 @@ function resetEnrollmentForm() {
   const [directClientName, setDirectClientName] = useState("");
   const [directClientPhone, setDirectClientPhone] = useState("");
   const [allClients, setAllClients] = useState<Client[]>([]);
+  const [archivedClients, setArchivedClients] = useState<Client[]>([]);
+  const [archivedFaculties, setArchivedFaculties] = useState<Faculty[]>([]);
+  const [archiveTab, setArchiveTab] = useState<"students" | "faculty">(
+    "students",
+  );
   const [clientListSearch, setClientListSearch] = useState("");
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
   const [editClientName, setEditClientName] = useState("");
@@ -432,6 +445,14 @@ function resetEnrollmentForm() {
   const loadAllClients = useCallback(async () => {
     const res = await fetch("/api/clients?q=&t=" + Date.now());
     if (res.ok) setAllClients(await res.json());
+  }, []);
+  const loadArchivedClients = useCallback(async () => {
+    const res = await fetch("/api/clients?archived=true&t=" + Date.now());
+    if (res.ok) setArchivedClients(await res.json());
+  }, []);
+  const loadArchivedFaculties = useCallback(async () => {
+    const res = await fetch("/api/faculty?archived=true&t=" + Date.now());
+    if (res.ok) setArchivedFaculties(await res.json());
   }, []);
   const loadAbsences = useCallback(async (clientId: number) => {
     setAbsenceLoading(true);
@@ -2704,6 +2725,170 @@ function resetEnrollmentForm() {
         </div>
       )}
 
+      {/* Fees */}
+      {tab === "fees" &&
+        (() => {
+          const rows = enrollments.map((e) => {
+            const paid = e.payments.reduce((s, p) => s + p.amount, 0);
+            const net = e.totalFee - e.discount;
+            return { e, paid, net, balance: net - paid };
+          });
+          const totalBilled = rows.reduce((s, r) => s + r.net, 0);
+          const totalCollected = rows.reduce((s, r) => s + r.paid, 0);
+          const totalOutstanding = totalBilled - totalCollected;
+          const sorted = [...rows].sort((a, b) => b.balance - a.balance);
+
+          const summaryCards: [string, number, string][] = [
+            ["Billed", totalBilled, "#8B5CF6"],
+            ["Collected", totalCollected, "#10B981"],
+            ["Outstanding", totalOutstanding, "#F59E0B"],
+          ];
+
+          return (
+            <div style={S.page}>
+              <h2 style={{ margin: "0 0 16px", fontSize: 17, fontWeight: 700 }}>
+                💰 Fees
+              </h2>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr",
+                  gap: 8,
+                  marginBottom: 16,
+                }}
+              >
+                {summaryCards.map(([label, value, color]) => (
+                  <div
+                    key={label}
+                    style={{
+                      background: "#1A1A24",
+                      border: "1px solid #2A2A3D",
+                      borderRadius: 14,
+                      padding: 14,
+                    }}
+                  >
+                    <div style={{ fontSize: 11, color: "#6B7280" }}>
+                      {label}
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color }}>
+                      ₹{value.toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {sorted.map(({ e, paid, net, balance }) => {
+                const status =
+                  balance <= 0
+                    ? { label: "Paid", color: "#10B981" }
+                    : paid === 0
+                      ? { label: "Unpaid", color: "#EF4444" }
+                      : { label: "Partial", color: "#F59E0B" };
+                return (
+                  <div
+                    key={e.id}
+                    style={{
+                      background: "#1A1A24",
+                      border: "1px solid #2A2A3D",
+                      borderRadius: 14,
+                      padding: 16,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: 15 }}>
+                        {e.client.name}
+                      </div>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: status.color,
+                          background: status.color + "22",
+                          border: "1px solid " + status.color + "55",
+                          borderRadius: 8,
+                          padding: "3px 8px",
+                        }}
+                      >
+                        {status.label}
+                      </span>
+                    </div>
+                    <div
+                      style={{ fontSize: 13, color: "#9CA3AF", marginTop: 4 }}
+                    >
+                      📘 {e.course.name}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 12,
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr 1fr",
+                        gap: 8,
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 11, color: "#6B7280" }}>
+                          Fee
+                        </div>
+                        <div style={{ fontWeight: 700 }}>
+                          ₹{net.toLocaleString()}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: "#6B7280" }}>
+                          Paid
+                        </div>
+                        <div style={{ fontWeight: 700, color: "#10B981" }}>
+                          ₹{paid.toLocaleString()}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: "#6B7280" }}>
+                          Balance
+                        </div>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            color: balance > 0 ? "#F59E0B" : "#10B981",
+                          }}
+                        >
+                          ₹{balance.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {enrollments.length === 0 && (
+                <div
+                  style={{
+                    textAlign: "center",
+                    padding: "40px 20px",
+                    color: "#4B5563",
+                  }}
+                >
+                  <div
+                    style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}
+                  >
+                    💰
+                  </div>
+                  <div style={{ fontSize: 13 }}>
+                    No fees yet — enroll a student to get started
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
       {/* Enrollment */}
       {tab === "enrollment" && (
         <div style={S.page}>
@@ -2892,6 +3077,11 @@ function resetEnrollmentForm() {
                   }}
                 >
                   <button
+                    onClick={() => {
+                      setPaymentEnrollment(enrollment);
+                      setPaymentAmount("");
+                      setPaymentMethod("cash");
+                    }}
                     style={{
                       flex: 1,
                       background: "rgba(16,185,129,.15)",
@@ -2908,6 +3098,10 @@ function resetEnrollmentForm() {
                   </button>
 
                   <button
+                    onClick={() => {
+                      loadBatches();
+                      setTab("batches");
+                    }}
                     style={{
                       flex: 1,
                       background: "rgba(108,60,225,.15)",
@@ -3267,31 +3461,25 @@ function resetEnrollmentForm() {
                       </button>
                       <button
                         onClick={async () => {
-                          if (
-                            !confirm(
-                              "Delete " +
-                                c.name +
-                                "? This will cancel all their bookings.",
-                            )
-                          )
-                            return;
+                          if (!confirm("Archive " + c.name + "?")) return;
                           const res = await fetch("/api/clients/" + c.id, {
-                            method: "DELETE",
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ active: false }),
                           });
                           if (res.ok) {
                             setAllClients((prev) =>
                               prev.filter((cl) => cl.id !== c.id),
                             );
-                            loadBookings();
-                            showToast("Student deleted");
+                            showToast("Student archived");
                           } else {
-                            showToast("Error deleting student");
+                            showToast("Error archiving student");
                           }
                         }}
                         style={{
-                          background: "rgba(239,68,68,0.15)",
-                          border: "1px solid rgba(239,68,68,0.3)",
-                          color: "#EF4444",
+                          background: "rgba(245,158,11,0.15)",
+                          border: "1px solid rgba(245,158,11,0.3)",
+                          color: "#F59E0B",
                           borderRadius: 8,
                           padding: "5px 10px",
                           fontSize: 12,
@@ -3299,7 +3487,7 @@ function resetEnrollmentForm() {
                           cursor: "pointer",
                         }}
                       >
-                        Delete
+                        Archive
                       </button>
                     </div>
                   </div>
@@ -3318,6 +3506,256 @@ function resetEnrollmentForm() {
                 👥
               </div>
               <div style={{ fontSize: 13 }}>No students yet</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "archives" && (
+        <div style={S.page}>
+          <h2 style={{ margin: "0 0 16px", fontSize: 17, fontWeight: 700 }}>
+            🗄️ Archives
+          </h2>
+
+          {/* Sub-tabs */}
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              background: "#1A1A24",
+              border: "1px solid #2A2A3D",
+              borderRadius: 12,
+              padding: 4,
+              marginBottom: 16,
+            }}
+          >
+            {(
+              [
+                ["students", `Students (${archivedClients.length})`],
+                ["faculty", `Faculty (${archivedFaculties.length})`],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setArchiveTab(id)}
+                style={{
+                  flex: 1,
+                  padding: "8px 12px",
+                  borderRadius: 9,
+                  border: "none",
+                  background:
+                    archiveTab === id
+                      ? "linear-gradient(135deg,#6C3CE1,#8B5CF6)"
+                      : "transparent",
+                  color: archiveTab === id ? "white" : "#9CA3AF",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Archived students */}
+          {archiveTab === "students" &&
+            archivedClients.map((c) => (
+            <div
+              key={c.id}
+              style={{
+                background: "#1A1A24",
+                border: "1px solid #2A2A3D",
+                borderRadius: 14,
+                padding: 14,
+                marginBottom: 10,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{c.name}</div>
+                {c.phone && (
+                  <div style={{ fontSize: 12, color: "#9CA3AF" }}>
+                    {c.phone}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={async () => {
+                    const res = await fetch("/api/clients/" + c.id, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ active: true }),
+                    });
+                    if (res.ok) {
+                      setArchivedClients((prev) =>
+                        prev.filter((cl) => cl.id !== c.id),
+                      );
+                      loadAllClients();
+                      showToast("Student restored");
+                    }
+                  }}
+                  style={{
+                    background: "rgba(16,185,129,0.15)",
+                    border: "1px solid rgba(16,185,129,0.3)",
+                    color: "#10B981",
+                    borderRadius: 8,
+                    padding: "5px 10px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Restore
+                </button>
+                <button
+                  onClick={async () => {
+                    if (
+                      !confirm(
+                        "Permanently delete " +
+                          c.name +
+                          "? This will remove all their bookings and cannot be undone.",
+                      )
+                    )
+                      return;
+                    const res = await fetch("/api/clients/" + c.id, {
+                      method: "DELETE",
+                    });
+                    if (res.ok) {
+                      setArchivedClients((prev) =>
+                        prev.filter((cl) => cl.id !== c.id),
+                      );
+                      loadBookings();
+                      showToast("Student deleted");
+                    } else {
+                      showToast("Error deleting student");
+                    }
+                  }}
+                  style={{
+                    background: "rgba(239,68,68,0.15)",
+                    border: "1px solid rgba(239,68,68,0.3)",
+                    color: "#EF4444",
+                    borderRadius: 8,
+                    padding: "5px 10px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {/* Archived faculty */}
+          {archiveTab === "faculty" &&
+            archivedFaculties.map((f) => (
+            <div
+              key={f.id}
+              style={{
+                background: "#1A1A24",
+                border: "1px solid #2A2A3D",
+                borderRadius: 14,
+                padding: 14,
+                marginBottom: 10,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{f.name}</div>
+                {f.phone && (
+                  <div style={{ fontSize: 12, color: "#9CA3AF" }}>
+                    {f.phone}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={async () => {
+                    const res = await fetch("/api/faculty/" + f.id, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ active: true }),
+                    });
+                    if (res.ok) {
+                      setArchivedFaculties((prev) =>
+                        prev.filter((fl) => fl.id !== f.id),
+                      );
+                      loadFaculties();
+                      showToast("Faculty restored");
+                    }
+                  }}
+                  style={{
+                    background: "rgba(16,185,129,0.15)",
+                    border: "1px solid rgba(16,185,129,0.3)",
+                    color: "#10B981",
+                    borderRadius: 8,
+                    padding: "5px 10px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Restore
+                </button>
+                <button
+                  onClick={async () => {
+                    if (
+                      !confirm(
+                        "Permanently delete " +
+                          f.name +
+                          "? This cannot be undone.",
+                      )
+                    )
+                      return;
+                    const res = await fetch("/api/faculty/" + f.id, {
+                      method: "DELETE",
+                    });
+                    if (res.ok) {
+                      setArchivedFaculties((prev) =>
+                        prev.filter((fl) => fl.id !== f.id),
+                      );
+                      showToast("Faculty deleted");
+                    }
+                  }}
+                  style={{
+                    background: "rgba(239,68,68,0.15)",
+                    border: "1px solid rgba(239,68,68,0.3)",
+                    color: "#EF4444",
+                    borderRadius: 8,
+                    padding: "5px 10px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {((archiveTab === "students" && archivedClients.length === 0) ||
+            (archiveTab === "faculty" && archivedFaculties.length === 0)) && (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "40px 20px",
+                color: "#4B5563",
+              }}
+            >
+              <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>
+                🗄️
+              </div>
+              <div style={{ fontSize: 13 }}>
+                No archived {archiveTab === "students" ? "students" : "faculty"}
+              </div>
             </div>
           )}
         </div>
@@ -3420,6 +3858,26 @@ function resetEnrollmentForm() {
               }}
             >
               📝 Enrollment
+            </button>
+
+            <button
+              onClick={() => {
+                setShowMoreMenu(false);
+                loadArchivedClients();
+                loadArchivedFaculties();
+                setTab("archives");
+              }}
+              style={{
+                width: "100%",
+                padding: "14px 16px",
+                background: "none",
+                border: "none",
+                color: "#F5F5F7",
+                textAlign: "left",
+                cursor: "pointer",
+              }}
+            >
+              🗄️ Archives
             </button>
           </div>
         </>
@@ -4413,6 +4871,180 @@ function resetEnrollmentForm() {
         </div>
       )}
 
+      {paymentEnrollment &&
+        (() => {
+          const paid = paymentEnrollment.payments.reduce(
+            (s, p) => s + p.amount,
+            0,
+          );
+          const net = paymentEnrollment.totalFee - paymentEnrollment.discount;
+          const balance = net - paid;
+          const entered = Number(paymentAmount) || 0;
+          const remaining = balance - entered;
+          return (
+            <div
+              onClick={() => setPaymentEnrollment(null)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,.7)",
+                zIndex: 260,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: "90%",
+                  maxWidth: 420,
+                  background: "#1A1A24",
+                  border: "1px solid #2A2A3D",
+                  borderRadius: 16,
+                  padding: 20,
+                }}
+              >
+                <h2 style={{ margin: "0 0 4px", fontSize: 18 }}>Add Payment</h2>
+                <div style={{ fontSize: 13, color: "#9CA3AF", marginBottom: 16 }}>
+                  {paymentEnrollment.client.name} · 📘{" "}
+                  {paymentEnrollment.course.name}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gap: 8,
+                    marginBottom: 16,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 11, color: "#6B7280" }}>Fee</div>
+                    <div style={{ fontWeight: 700 }}>
+                      ₹{net.toLocaleString()}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#6B7280" }}>Paid</div>
+                    <div style={{ fontWeight: 700, color: "#10B981" }}>
+                      ₹{paid.toLocaleString()}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#6B7280" }}>Balance</div>
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        color: balance > 0 ? "#F59E0B" : "#10B981",
+                      }}
+                    >
+                      ₹{balance.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+
+                <label style={S.label}>Amount *</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  placeholder="Enter amount"
+                  style={{ ...S.input, marginBottom: 12 }}
+                />
+
+                <label style={S.label}>Method</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  style={{ ...S.input, marginBottom: 12 }}
+                >
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="card">Card</option>
+                  <option value="bank">Bank Transfer</option>
+                </select>
+
+                {entered > 0 && (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: remaining > 0 ? "#F59E0B" : "#10B981",
+                      marginBottom: 12,
+                    }}
+                  >
+                    {remaining > 0
+                      ? `₹${remaining.toLocaleString()} left to pay after this`
+                      : remaining === 0
+                        ? "Fully paid after this payment ✓"
+                        : `Overpaid by ₹${Math.abs(remaining).toLocaleString()}`}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => setPaymentEnrollment(null)}
+                    style={{
+                      flex: 1,
+                      background: "#242436",
+                      border: "1px solid #2A2A3D",
+                      color: "#9CA3AF",
+                      borderRadius: 10,
+                      padding: "10px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled={loading || entered <= 0}
+                    onClick={async () => {
+                      if (entered <= 0) return;
+                      setLoading(true);
+                      const res = await fetch("/api/payments", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          enrollmentId: paymentEnrollment.id,
+                          amount: entered,
+                          paymentMethod,
+                        }),
+                      });
+                      setLoading(false);
+                      if (res.ok) {
+                        setPaymentEnrollment(null);
+                        loadEnrollments();
+                        showToast("Payment of ₹" + entered.toLocaleString() + " added");
+                      } else {
+                        const data = await res.json();
+                        showToast(data.error || "Failed to add payment");
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      background:
+                        entered > 0
+                          ? "linear-gradient(135deg,#10B981,#059669)"
+                          : "#1F2A26",
+                      border: "none",
+                      color: "white",
+                      borderRadius: 10,
+                      padding: "10px",
+                      fontWeight: 600,
+                      cursor: entered > 0 ? "pointer" : "not-allowed",
+                      opacity: entered > 0 ? 1 : 0.5,
+                    }}
+                  >
+                    Save Payment
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
       {showEnrollmentModal && (
         <div
 onClick={() => {
@@ -5258,19 +5890,21 @@ onClick={() => {
                       </button>
                       <button
                         onClick={async () => {
-                          if (!confirm("Remove " + f.name + "?")) return;
+                          if (!confirm("Archive " + f.name + "?")) return;
                           const res = await fetch("/api/faculty/" + f.id, {
-                            method: "DELETE",
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ active: false }),
                           });
                           if (res.ok) {
                             loadFaculties();
-                            showToast("Faculty removed");
+                            showToast("Faculty archived");
                           }
                         }}
                         style={{
-                          background: "rgba(239,68,68,0.15)",
-                          border: "1px solid rgba(239,68,68,0.3)",
-                          color: "#EF4444",
+                          background: "rgba(245,158,11,0.15)",
+                          border: "1px solid rgba(245,158,11,0.3)",
+                          color: "#F59E0B",
                           borderRadius: 8,
                           padding: "5px 10px",
                           fontSize: 12,
@@ -5278,7 +5912,7 @@ onClick={() => {
                           cursor: "pointer",
                         }}
                       >
-                        Delete
+                        Archive
                       </button>
                     </div>
                   </div>
