@@ -3233,8 +3233,10 @@ function resetEnrollmentForm() {
               />
               <div style={{ display: "flex", gap: 8 }}>
                 <button
+                  disabled={!directClientName.trim() || loading}
                   onClick={async () => {
-                    if (!directClientName.trim()) return;
+                    if (!directClientName.trim() || loading) return;
+                    setLoading(true);
                     const res = await fetch("/api/clients", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
@@ -3243,6 +3245,7 @@ function resetEnrollmentForm() {
                         phone: directClientPhone.trim(),
                       }),
                     });
+                    setLoading(false);
                     if (res.ok) {
                       setDirectClientName("");
                       setDirectClientPhone("");
@@ -3253,17 +3256,24 @@ function resetEnrollmentForm() {
                   }}
                   style={{
                     flex: 1,
-                    background: "#6C3CE1",
+                    background:
+                      !directClientName.trim() || loading
+                        ? "#3A2E5C"
+                        : "#6C3CE1",
                     color: "white",
                     border: "none",
                     borderRadius: 10,
                     padding: "10px",
                     fontSize: 13,
                     fontWeight: 600,
-                    cursor: "pointer",
+                    cursor:
+                      !directClientName.trim() || loading
+                        ? "not-allowed"
+                        : "pointer",
+                    opacity: !directClientName.trim() || loading ? 0.6 : 1,
                   }}
                 >
-                  Save
+                  {loading ? "Saving..." : "Save"}
                 </button>
                 <button
                   onClick={() => setShowNewClientDirect(false)}
