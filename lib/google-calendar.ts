@@ -14,6 +14,34 @@ const calendar = google.calendar({
   auth: oauth2Client
 })
 
+// ⚡ DROP THE NEW FUNCTION RIGHT HERE:
+function forceIndianISOString(date: Date): string {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  const parts = formatter.formatToParts(date);
+  const getValue = (type: string) => parts.find(p => p.type === type)?.value || '';
+  
+  const yyyy = getValue('year');
+  const mm = getValue('month');
+  const dd = getValue('day');
+  let hh = getValue('hour');
+  const min = getValue('minute');
+  const ss = getValue('second');
+
+  if (hh === '24') hh = '00';
+
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}+05:30`;
+}
+
 export async function createCalendarEvent(
   title: string,
   startTime: Date,
@@ -26,16 +54,20 @@ export async function createCalendarEvent(
       summary: title,
       description,
       start: {
-        dateTime: startTime.toISOString()
+        // Updated to use the new bulletproof formatter
+        dateTime: forceIndianISOString(startTime),
+        timeZone: 'Asia/Kolkata'
       },
       end: {
-        dateTime: endTime.toISOString()
+        dateTime: forceIndianISOString(endTime),
+        timeZone: 'Asia/Kolkata'
       }
     }
   })
 
   return event.data
 }
+
 export async function updateCalendarEvent(
   eventId: string,
   title: string,
@@ -50,19 +82,21 @@ export async function updateCalendarEvent(
       summary: title,
       description,
       start: {
-        dateTime: startTime.toISOString()
+        // Updated to use the new bulletproof formatter
+        dateTime: forceIndianISOString(startTime),
+        timeZone: 'Asia/Kolkata'
       },
       end: {
-        dateTime: endTime.toISOString()
+        dateTime: forceIndianISOString(endTime),
+        timeZone: 'Asia/Kolkata'
       }
     }
   })
 
   return event.data
 }
-export async function deleteCalendarEvent(
-  eventId: string
-) {
+
+export async function deleteCalendarEvent(eventId: string) {
   await calendar.events.delete({
     calendarId: process.env.GOOGLE_CALENDAR_ID,
     eventId

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { isStudioAvailable } from '@/lib/availability'
 import { updateCalendarEvent } from '@/lib/google-calendar'
 
+export const dynamic = 'force-dynamic'
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -40,12 +41,12 @@ export async function POST(
   }
 
   // Find sessions from fromBookingId onwards
-  const fromIndex = batch.bookings.findIndex(b => b.id === Number(fromBookingId))
+  const fromIndex = batch.bookings.findIndex((b: any) => b.id === Number(fromBookingId))
   if (fromIndex === -1) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
   const sessionsToShift = batch.bookings.slice(fromIndex)
 
-  const shiftingIds = sessionsToShift.map(s => s.id
+  const shiftingIds = sessionsToShift.map((s: any) => s.id
 )
   // Calculate new dates by shifting each session to the next batch day
   const [h, m] = batch.startTime.split(':').map(Number)

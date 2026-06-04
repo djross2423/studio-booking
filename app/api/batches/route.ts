@@ -6,7 +6,7 @@ import { createCalendarEvent } from '@/lib/google-calendar'
 const BATCH_COLORS = [
   '#F59E0B', '#EF4444', '#3B82F6', '#EC4899', '#14B8A6', '#F97316', '#84CC16'
 ]
-
+export const dynamic = 'force-dynamic'
 export async function GET() {
   const batches = await prisma.batch.findMany({
     where: { status: 'active' },
@@ -54,16 +54,24 @@ const {
 
   while (sessions.length < target) {
     if (days.includes(cursor.getDay())) {
-      const [h, m] = startTime.split(':').map(Number)
-      const sessionStart = new Date(cursor)
-      sessionStart.setHours(h, m, 0, 0)
-      const sessionEnd = new Date(sessionStart)
-      sessionEnd.setHours(sessionEnd.getHours() + Number(duration))
-      sessions.push({ start: sessionStart, end: sessionEnd })
-      endDate = cursor.toISOString().split('T')[0]
+      // 1. Get the YYYY-MM-DD part from the current cursor
+      const dateStr = cursor.toISOString().split('T')[0];
+
+      // 2. Build the exact IST moment by forcing the +05:30 offset
+      // This forces the server to treat the time as 10:00 AM IST, not UTC
+      const sessionStart = new Date(`${dateStr}T${startTime}:00+05:30`);
+      
+      // 3. Keep end time relative to the locked start time
+      const sessionEnd = new Date(sessionStart);
+      sessionEnd.setHours(sessionEnd.getHours() + Number(duration));
+      
+      sessions.push({ start: sessionStart, end: sessionEnd });
+      endDate = dateStr;
     }
-    cursor.setDate(cursor.getDate() + 1)
-    if (cursor > new Date(startDate + 'T00:00:00') && sessions.length === 0 && cursor.getDate() > 400) break
+    cursor.setDate(cursor.getDate() + 1);
+    
+    // Safety break to prevent infinite loops
+    if (cursor.getFullYear() > new Date().getFullYear() + 2) break;
   }
 
   if (sessions.length === 0) {

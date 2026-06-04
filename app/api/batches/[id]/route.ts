@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { deleteCalendarEvent } from '@/lib/google-calendar'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
@@ -37,7 +39,9 @@ export async function PATCH(
     const batch = await prisma.batch.findUnique({ where: { id }, include: { enrolments: true } })
     if (!batch) return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
     if (batch.enrolments.length >= 4) return NextResponse.json({ error: 'Batch is full (max 4 students)' }, { status: 400 })
-    const exists = batch.enrolments.some(e => e.clientId === Number(addClientId))
+    
+    // ✅ FIXED: Handled the implicit 'any' parameter for the enrollment check loop
+    const exists = batch.enrolments.some((e: any) => e.clientId === Number(addClientId))
     if (exists) return NextResponse.json({ error: 'Student already in batch' }, { status: 400 })
     await prisma.batchEnrolment.create({ data: { batchId: id, clientId: Number(addClientId) } })
   }
@@ -62,33 +66,29 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   const id = Number(params.id)
-const bookings = await prisma.booking.findMany({
-  where: { batchId: id },
-  select: {
-    id: true,
-    googleEventId: true
-  }
-})
-  const bookingIds = bookings.map(b => b.id)
-for (const booking of bookings) {
-  if (booking.googleEventId) {
-    try {
-      await deleteCalendarEvent(
-        booking.googleEventId
-      )
-
-      console.log(
-        `Deleted Google event for booking ${booking.id}`
-      )
-    } catch (err) {
-      console.error(
-        `Failed deleting Google event for booking ${booking.id}`,
-        err
-      )
+  const bookings = await prisma.booking.findMany({
+    where: { batchId: id },
+    select: {
+      id: true,
+      googleEventId: true
     }
-  }
-} 
- await prisma.absence.deleteMany({ where: { bookingId: { in: bookingIds } } })
+  })
+  
+  // ✅ FIXED: Added explicit 'any' to prevent compilation failure down here
+  const bookingIds = bookings.map((b: any) => b.id)
+
+  for (const booking of bookings) {
+    if (booking.googleEventId) {
+      try {
+        await deleteCalendarEvent(booking.googleEventId)
+        console.log(`Deleted Google event for booking ${booking.id}`)
+      } catch (err) {
+        console.error(`Failed deleting Google event for booking ${booking.id}`, err)
+      }
+    }
+  } 
+
+  await prisma.absence.deleteMany({ where: { bookingId: { in: bookingIds } } })
   await prisma.facultyAttendance.deleteMany({ where: { bookingId: { in: bookingIds } } })
   await prisma.booking.deleteMany({ where: { batchId: id } })
   await prisma.batchEnrolment.deleteMany({ where: { batchId: id } })

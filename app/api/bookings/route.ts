@@ -3,19 +3,12 @@ import { prisma } from '@/lib/prisma'
 import { isStudioAvailable } from '@/lib/availability'
 import { createCalendarEvent } from '@/lib/google-calendar'
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const from = searchParams.get('from')
-  const to = searchParams.get('to')
+export const dynamic = 'force-dynamic'
 
+export async function GET() {
   const bookings = await prisma.booking.findMany({
-    where: {
-      status: { not: 'cancelled' },
-      ...(from && to
-        ? { startTime: { gte: new Date(from), lt: new Date(to) } }
-        : {}),
-    },
-    include: { client: true, batch: { include: { enrolments: { include: { client: true } } } } },
+    where: { status: 'confirmed' },
+    include: { client: true, batch: true },
     orderBy: { startTime: 'asc' },
   })
   return NextResponse.json(bookings)
@@ -31,7 +24,6 @@ export async function POST(req: NextRequest) {
 
   const start = new Date(startTime)
   const end = new Date(endTime)
-
   if (end <= start) {
     return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 })
   }
@@ -45,21 +37,32 @@ export async function POST(req: NextRequest) {
   }
 
   const booking = await prisma.booking.create({
-    data: { clientId: Number(clientId), room, startTime: start, endTime: end, notes, sessionType: sessionType || 'demo' },
-    include: { client: true, batch: { include: { enrolments: { include: { client: true } } } } },
+    data: {
+      clientId: Number(clientId),
+      room,
+      startTime: start,
+      endTime: end,
+      status: 'confirmed',
+      ...(notes !== undefined ? { notes } : {}),
+      ...(sessionType ? { sessionType } : {}),
+    },
+    include: { client: true },
   })
-const calendarEvent = await createCalendarEvent(
-  booking.client?.name || 'Studio Booking',
-  booking.startTime,
-  booking.endTime,
-  booking.notes || ''
-)
-await prisma.booking.update({
-  where: { id: booking.id },
-  data: {
-    googleEventId: calendarEvent.id
+
+  try {
+    const event = await createCalendarEvent(
+      booking.client?.name || 'Studio Booking',
+      booking.startTime,
+      booking.endTime,
+      booking.notes || ''
+    )
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: { googleEventId: event.id || null },
+    })
+  } catch (err) {
+    console.error(`Failed Google event for booking ${booking.id}`, err)
   }
-})
 
   return NextResponse.json(booking, { status: 201 })
 }

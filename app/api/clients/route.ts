@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const q = searchParams.get('q') ?? ''
+  const archived = searchParams.get('archived') === 'true'
 
   const clients = await prisma.client.findMany({
-    where: q ? { name: { contains: q } } : undefined,
+    where: {
+      active: !archived,
+      ...(q ? { name: { contains: q, mode: 'insensitive' as const } } : {}),
+    },
     include: { _count: { select: { absences: true } } },
     orderBy: { createdAt: 'desc' },
   })

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+export const dynamic = 'force-dynamic'
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: { id: string } }
@@ -23,7 +24,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   const id = Number(params.id)
-  const { name, phone, notes } = await req.json()
+  const { name, phone, notes, active } = await req.json()
   try {
     const client = await prisma.client.update({
       where: { id },
@@ -31,6 +32,7 @@ export async function PATCH(
         ...(name ? { name } : {}),
         ...(phone !== undefined ? { phone } : {}),
         ...(notes !== undefined ? { notes } : {}),
+        ...(active !== undefined ? { active } : {}),
       }
     })
     return NextResponse.json(client)

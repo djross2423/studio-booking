@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 
+export const dynamic = 'force-dynamic'
 export const metadata: Metadata = {
   title: 'Studio bookings',
   description: 'Studio session booking manager',
