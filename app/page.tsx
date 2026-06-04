@@ -399,6 +399,7 @@ function resetEnrollmentForm() {
   const [batchClientSearch, setBatchClientSearch] = useState("");
   const [batchClients, setBatchClients] = useState<Client[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null);
+  const [batchTab, setBatchTab] = useState<"active" | "completed">("active");
   const [addStudentSearch, setAddStudentSearch] = useState("");
   const [addStudentResults, setAddStudentResults] = useState<Client[]>([]);
   const [showAddStudent, setShowAddStudent] = useState(false);
@@ -513,6 +514,12 @@ function resetEnrollmentForm() {
     }, 200);
     return () => clearTimeout(t);
   }, [batchClientSearch, showBatchModal]);
+
+  // Batches split into active (ongoing) vs completed (last session in the past)
+  const _today = fmtDate(new Date());
+  const activeBatches = batches.filter((b) => b.endDate >= _today);
+  const completedBatches = batches.filter((b) => b.endDate < _today);
+  const shownBatches = batchTab === "active" ? activeBatches : completedBatches;
 
   // Stats
   const now = new Date();
@@ -2564,7 +2571,7 @@ function resetEnrollmentForm() {
                 }}
               >
                 <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>
-                  Active Batches
+                  Batches
                 </h2>
                 <button
                   onClick={openBatchModal}
@@ -2582,10 +2589,57 @@ function resetEnrollmentForm() {
                   + New Batch
                 </button>
               </div>
-              {batches.length === 0 ? (
-                <EmptyState text="No active batches" />
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  background: "#1A1A24",
+                  border: "1px solid #2A2A3D",
+                  borderRadius: 12,
+                  padding: 4,
+                  marginBottom: 16,
+                }}
+              >
+                {(
+                  [
+                    ["active", `Active (${activeBatches.length})`],
+                    ["completed", `Completed (${completedBatches.length})`],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => setBatchTab(id)}
+                    style={{
+                      flex: 1,
+                      padding: "8px 12px",
+                      borderRadius: 9,
+                      border: "none",
+                      background:
+                        batchTab === id
+                          ? "linear-gradient(135deg,#6C3CE1,#8B5CF6)"
+                          : "transparent",
+                      color: batchTab === id ? "white" : "#9CA3AF",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {shownBatches.length === 0 ? (
+                <EmptyState
+                  text={
+                    batchTab === "active"
+                      ? "No active batches"
+                      : "No completed batches"
+                  }
+                />
               ) : (
-                batches.map((batch) => (
+                shownBatches.map((batch) => (
                   <div
                     key={batch.id}
                     onClick={() => setSelectedBatch(batch)}
