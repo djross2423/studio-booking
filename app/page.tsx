@@ -2829,30 +2829,32 @@ function resetEnrollmentForm() {
                       style={{
                         marginTop: 12,
                         display: "grid",
-                        gridTemplateColumns: "1fr 1fr 1fr",
+                        gridTemplateColumns: "1fr 1fr 1fr 1fr",
                         gap: 8,
                       }}
                     >
                       <div>
-                        <div style={{ fontSize: 11, color: "#6B7280" }}>
-                          Fee
-                        </div>
+                        <div style={{ fontSize: 11, color: "#6B7280" }}>Fee</div>
                         <div style={{ fontWeight: 700 }}>
-                          ₹{net.toLocaleString()}
+                          ₹{e.totalFee.toLocaleString()}
                         </div>
                       </div>
                       <div>
-                        <div style={{ fontSize: 11, color: "#6B7280" }}>
-                          Paid
-                        </div>
+                        <div style={{ fontSize: 11, color: "#6B7280" }}>Paid</div>
                         <div style={{ fontWeight: 700, color: "#10B981" }}>
                           ₹{paid.toLocaleString()}
                         </div>
                       </div>
                       <div>
-                        <div style={{ fontSize: 11, color: "#6B7280" }}>
-                          Balance
+                        <div style={{ fontSize: 11, color: "#6B7280" }}>Discount</div>
+                        <div style={{ fontWeight: 700, color: "#8B5CF6" }}>
+                          {e.discount > 0
+                            ? `₹${e.discount.toLocaleString()}`
+                            : "—"}
                         </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: "#6B7280" }}>Balance</div>
                         <div
                           style={{
                             fontWeight: 700,
@@ -2949,6 +2951,12 @@ function resetEnrollmentForm() {
             );
 
             const balance = enrollment.totalFee - enrollment.discount - paid;
+            const isPaused = enrollment.status === "paused";
+            const currentBatch = batches.find(
+              (b) =>
+                b.courseId === enrollment.course.id &&
+                b.enrolments.some((e) => e.clientId === enrollment.client.id),
+            );
 
             return (
               <div
@@ -2995,56 +3003,48 @@ function resetEnrollmentForm() {
                   style={{
                     marginTop: 6,
                     fontSize: 13,
-                    color: "#F59E0B",
+                    color: isPaused
+                      ? "#9CA3AF"
+                      : currentBatch
+                        ? "#8B5CF6"
+                        : "#F59E0B",
                   }}
                 >
-                  ⚠ Batch Not Assigned
+                  {isPaused
+                    ? "⏸ Paused"
+                    : currentBatch
+                      ? `📚 ${currentBatch.name}`
+                      : "⚠ Batch Not Assigned"}
                 </div>
 
                 <div
                   style={{
                     marginTop: 12,
                     display: "grid",
-                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gridTemplateColumns: "1fr 1fr 1fr 1fr",
                     gap: 8,
                   }}
                 >
                   <div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "#6B7280",
-                      }}
-                    >
-                      Fee
-                    </div>
-
-                    <div
-                      style={{
-                        fontWeight: 700,
-                      }}
-                    >
+                    <div style={{ fontSize: 11, color: "#6B7280" }}>Fee</div>
+                    <div style={{ fontWeight: 700 }}>
                       ₹{enrollment.totalFee.toLocaleString()}
                     </div>
                   </div>
 
                   <div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "#6B7280",
-                      }}
-                    >
-                      Paid
-                    </div>
-
-                    <div
-                      style={{
-                        fontWeight: 700,
-                        color: "#10B981",
-                      }}
-                    >
+                    <div style={{ fontSize: 11, color: "#6B7280" }}>Paid</div>
+                    <div style={{ fontWeight: 700, color: "#10B981" }}>
                       ₹{paid.toLocaleString()}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: 11, color: "#6B7280" }}>Discount</div>
+                    <div style={{ fontWeight: 700, color: "#8B5CF6" }}>
+                      {enrollment.discount > 0
+                        ? `₹${enrollment.discount.toLocaleString()}`
+                        : "—"}
                     </div>
                   </div>
 
@@ -3097,16 +3097,70 @@ function resetEnrollmentForm() {
                     Add Payment
                   </button>
 
+                  {!isPaused && (
+                    <button
+                      onClick={() => {
+                        loadBatches();
+                        setTab("batches");
+                      }}
+                      style={{
+                        flex: 1,
+                        background: "rgba(108,60,225,.15)",
+                        border: "1px solid rgba(108,60,225,.3)",
+                        color: "#8B5CF6",
+                        borderRadius: 8,
+                        padding: "8px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Assign Batch
+                    </button>
+                  )}
+
                   <button
-                    onClick={() => {
-                      loadBatches();
-                      setTab("batches");
+                    onClick={async () => {
+                      const next = isPaused ? "active" : "paused";
+                      if (
+                        next === "paused" &&
+                        !confirm(
+                          `Pause ${enrollment.client.name}'s course?` +
+                            (currentBatch
+                              ? ` They'll be removed from ${currentBatch.name}.`
+                              : ""),
+                        )
+                      )
+                        return;
+                      const res = await fetch(
+                        "/api/enrollments/" + enrollment.id,
+                        {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ status: next }),
+                        },
+                      );
+                      if (res.ok) {
+                        loadEnrollments();
+                        loadBatches();
+                        showToast(
+                          next === "paused"
+                            ? "Course paused"
+                            : "Course resumed",
+                        );
+                      } else {
+                        showToast("Error updating course");
+                      }
                     }}
                     style={{
                       flex: 1,
-                      background: "rgba(108,60,225,.15)",
-                      border: "1px solid rgba(108,60,225,.3)",
-                      color: "#8B5CF6",
+                      background: isPaused
+                        ? "rgba(16,185,129,.15)"
+                        : "rgba(245,158,11,.15)",
+                      border: isPaused
+                        ? "1px solid rgba(16,185,129,.3)"
+                        : "1px solid rgba(245,158,11,.3)",
+                      color: isPaused ? "#10B981" : "#F59E0B",
                       borderRadius: 8,
                       padding: "8px",
                       fontSize: 12,
@@ -3114,7 +3168,7 @@ function resetEnrollmentForm() {
                       cursor: "pointer",
                     }}
                   >
-                    Assign Batch
+                    {isPaused ? "▶ Resume" : "⏸ Pause"}
                   </button>
                 </div>
               </div>
@@ -4906,7 +4960,7 @@ function resetEnrollmentForm() {
                 }}
               >
                 <h2 style={{ margin: "0 0 4px", fontSize: 18 }}>Add Payment</h2>
-                <div style={{ fontSize: 13, color: "#9CA3AF", marginBottom: 16 }}>
+                <div style={{ fontSize: 13, color: "#9CA3AF", marginBottom: 8 }}>
                   {paymentEnrollment.client.name} · 📘{" "}
                   {paymentEnrollment.course.name}
                 </div>
@@ -4914,7 +4968,7 @@ function resetEnrollmentForm() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gridTemplateColumns: "1fr 1fr 1fr 1fr",
                     gap: 8,
                     marginBottom: 16,
                   }}
@@ -4922,13 +4976,21 @@ function resetEnrollmentForm() {
                   <div>
                     <div style={{ fontSize: 11, color: "#6B7280" }}>Fee</div>
                     <div style={{ fontWeight: 700 }}>
-                      ₹{net.toLocaleString()}
+                      ₹{paymentEnrollment.totalFee.toLocaleString()}
                     </div>
                   </div>
                   <div>
                     <div style={{ fontSize: 11, color: "#6B7280" }}>Paid</div>
                     <div style={{ fontWeight: 700, color: "#10B981" }}>
                       ₹{paid.toLocaleString()}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#6B7280" }}>Discount</div>
+                    <div style={{ fontWeight: 700, color: "#8B5CF6" }}>
+                      {paymentEnrollment.discount > 0
+                        ? `₹${paymentEnrollment.discount.toLocaleString()}`
+                        : "—"}
                     </div>
                   </div>
                   <div>
