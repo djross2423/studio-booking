@@ -5,7 +5,8 @@ export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { enrollmentId, amount, paymentMethod, reference, notes } = body
+  const { enrollmentId, amount, paymentMethod, reference, notes, paymentDate } =
+    body
 
   if (!enrollmentId || !amount || Number(amount) <= 0) {
     return NextResponse.json(
@@ -28,6 +29,9 @@ export async function POST(req: NextRequest) {
       paymentMethod: paymentMethod || 'cash',
       reference: reference || null,
       notes: notes || null,
+      ...(paymentDate
+        ? { paymentDate: new Date(paymentDate + 'T00:00:00') }
+        : {}),
     },
   })
 

@@ -64,7 +64,11 @@ const enrollment = await prisma.enrollment.create({
       totalFee: Number(body.totalFee),
       discount: Number(body.discount || 0),
 
-      status: 'active'
+      status: 'active',
+
+      ...(body.enrolledOn
+        ? { enrolledOn: new Date(body.enrolledOn + 'T00:00:00') }
+        : {})
     }
   })
 

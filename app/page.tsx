@@ -79,6 +79,7 @@ type Enrollment = {
   totalFee: number;
   discount: number;
   status: string;
+  enrolledOn: string;
 
   client: {
     id: number;
@@ -94,6 +95,8 @@ type Enrollment = {
   payments: {
     id: number;
     amount: number;
+    paymentDate: string;
+    paymentMethod?: string;
   }[];
 };
 
@@ -267,8 +270,13 @@ export default function App() {
     | "courses"
     | "enrollment"
     | "archives"
+    | "payments"
   >("dashboard");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [paymentTab, setPaymentTab] = useState<"received" | "pending">(
+    "received",
+  );
+  const [paymentFilter, setPaymentFilter] = useState("");
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -352,6 +360,7 @@ export default function App() {
     discount: "0",
     initialPayment: "",
     paymentMethod: "cash",
+    enrolledOn: fmtDate(new Date()),
   });
 
   const [enrollmentSearch, setEnrollmentSearch] = useState("");
@@ -362,6 +371,7 @@ export default function App() {
   );
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [paymentDate, setPaymentDate] = useState(fmtDate(new Date()));
 
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
 
@@ -374,6 +384,7 @@ function resetEnrollmentForm() {
     discount: "0",
     initialPayment: "",
     paymentMethod: "cash",
+    enrolledOn: fmtDate(new Date()),
   });
 
   setEnrollmentSearch("");
@@ -3056,6 +3067,21 @@ function resetEnrollmentForm() {
                 <div
                   style={{
                     marginTop: 6,
+                    fontSize: 12,
+                    color: "#6B7280",
+                  }}
+                >
+                  📅 Enrolled{" "}
+                  {new Date(enrollment.enrolledOn).toLocaleDateString("en-IN", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 6,
                     fontSize: 13,
                     color: isPaused
                       ? "#9CA3AF"
@@ -3135,6 +3161,7 @@ function resetEnrollmentForm() {
                       setPaymentEnrollment(enrollment);
                       setPaymentAmount("");
                       setPaymentMethod("cash");
+                      setPaymentDate(fmtDate(new Date()));
                     }}
                     style={{
                       flex: 1,
@@ -3629,6 +3656,197 @@ function resetEnrollmentForm() {
         </div>
       )}
 
+      {tab === "payments" &&
+        (() => {
+          const q = paymentFilter.trim().toLowerCase();
+          const received = enrollments
+            .flatMap((e) =>
+              e.payments.map((p) => ({
+                key: p.id,
+                name: e.client.name,
+                amount: p.amount,
+                date: p.paymentDate,
+                method: p.paymentMethod,
+              })),
+            )
+            .filter((r) => r.name.toLowerCase().includes(q))
+            .sort(
+              (a, b) =>
+                new Date(b.date).getTime() - new Date(a.date).getTime(),
+            );
+          const pending = enrollments
+            .map((e) => {
+              const paid = e.payments.reduce((s, p) => s + p.amount, 0);
+              return {
+                key: e.id,
+                name: e.client.name,
+                balance: e.totalFee - e.discount - paid,
+              };
+            })
+            .filter((p) => p.balance > 0)
+            .filter((p) => p.name.toLowerCase().includes(q));
+
+          return (
+            <div style={S.page}>
+              <h2 style={{ margin: "0 0 16px", fontSize: 17, fontWeight: 700 }}>
+                💳 Payments
+              </h2>
+
+              {/* Sub-tabs */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  background: "#1A1A24",
+                  border: "1px solid #2A2A3D",
+                  borderRadius: 12,
+                  padding: 4,
+                  marginBottom: 12,
+                }}
+              >
+                {(
+                  [
+                    ["received", `Received (${received.length})`],
+                    ["pending", `Pending (${pending.length})`],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => setPaymentTab(id)}
+                    style={{
+                      flex: 1,
+                      padding: "8px 12px",
+                      borderRadius: 9,
+                      border: "none",
+                      background:
+                        paymentTab === id
+                          ? "linear-gradient(135deg,#6C3CE1,#8B5CF6)"
+                          : "transparent",
+                      color: paymentTab === id ? "white" : "#9CA3AF",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Student name filter */}
+              <input
+                value={paymentFilter}
+                onChange={(e) => setPaymentFilter(e.target.value)}
+                placeholder="Filter by student name..."
+                style={{ ...S.input, marginBottom: 16 }}
+              />
+
+              {paymentTab === "received" &&
+                received.map((r) => (
+                  <div
+                    key={r.key}
+                    style={{
+                      background: "#1A1A24",
+                      border: "1px solid #2A2A3D",
+                      borderRadius: 14,
+                      padding: 16,
+                      marginBottom: 10,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 15 }}>
+                        {r.name}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "#9CA3AF",
+                          marginTop: 4,
+                        }}
+                      >
+                        📅{" "}
+                        {new Date(r.date).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                        {r.method ? ` · ${r.method}` : ""}
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        fontSize: 16,
+                        color: "#10B981",
+                      }}
+                    >
+                      ₹{r.amount.toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+
+              {paymentTab === "pending" &&
+                pending.map((p) => (
+                  <div
+                    key={p.key}
+                    style={{
+                      background: "#1A1A24",
+                      border: "1px solid #2A2A3D",
+                      borderRadius: 14,
+                      padding: 16,
+                      marginBottom: 10,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>
+                      {p.name}
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 11, color: "#6B7280" }}>
+                        Balance
+                      </div>
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 16,
+                          color: "#F59E0B",
+                        }}
+                      >
+                        ₹{p.balance.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+              {((paymentTab === "received" && received.length === 0) ||
+                (paymentTab === "pending" && pending.length === 0)) && (
+                <div
+                  style={{
+                    textAlign: "center",
+                    padding: "40px 20px",
+                    color: "#4B5563",
+                  }}
+                >
+                  <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>
+                    💳
+                  </div>
+                  <div style={{ fontSize: 13 }}>
+                    {paymentTab === "received"
+                      ? "No payments received"
+                      : "No pending payments"}
+                    {q ? " for that name" : ""}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
       {tab === "archives" && (
         <div style={S.page}>
           <h2 style={{ margin: "0 0 16px", fontSize: 17, fontWeight: 700 }}>
@@ -3976,6 +4194,27 @@ function resetEnrollmentForm() {
               }}
             >
               📝 Enrollment
+            </button>
+
+            <button
+              onClick={() => {
+                setShowMoreMenu(false);
+                loadEnrollments();
+                setPaymentTab("received");
+                setPaymentFilter("");
+                setTab("payments");
+              }}
+              style={{
+                width: "100%",
+                padding: "14px 16px",
+                background: "none",
+                border: "none",
+                color: "#F5F5F7",
+                textAlign: "left",
+                cursor: "pointer",
+              }}
+            >
+              💳 Payments
             </button>
 
             <button
@@ -5092,6 +5331,14 @@ function resetEnrollmentForm() {
                   <option value="bank">Bank Transfer</option>
                 </select>
 
+                <label style={S.label}>Payment Date</label>
+                <input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  style={{ ...S.input, marginBottom: 12 }}
+                />
+
                 {entered > 0 && (
                   <div
                     style={{
@@ -5136,6 +5383,7 @@ function resetEnrollmentForm() {
                           enrollmentId: paymentEnrollment.id,
                           amount: entered,
                           paymentMethod,
+                          paymentDate,
                         }),
                       });
                       setLoading(false);
@@ -5379,6 +5627,22 @@ onClick={() => {
               }}
             />
 
+            <label style={S.label}>Enrollment Date</label>
+            <input
+              type="date"
+              value={enrollmentForm.enrolledOn}
+              onChange={(e) =>
+                setEnrollmentForm({
+                  ...enrollmentForm,
+                  enrolledOn: e.target.value,
+                })
+              }
+              style={{
+                ...S.input,
+                marginBottom: 12,
+              }}
+            />
+
             <div
               style={{
                 display: "flex",
@@ -5432,6 +5696,7 @@ onClick={() => {
                       discount: "0",
                       initialPayment: "",
                       paymentMethod: "cash",
+                      enrolledOn: fmtDate(new Date()),
                     });
 
                     setSelectedClientId(null);
