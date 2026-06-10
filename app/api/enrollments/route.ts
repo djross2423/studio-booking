@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { parseBody, enrollSchema } from '@/lib/validation'
 
 export const dynamic = 'force-dynamic'
 export async function GET() {
@@ -18,7 +19,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  const parsed = await parseBody(req, enrollSchema)
+  if ('error' in parsed) return parsed.error
+  const body = parsed.data
 
 let client
 
@@ -33,6 +36,12 @@ if (body.clientId) {
 
 // New student
 if (!client) {
+  if (!body.name) {
+    return NextResponse.json(
+      { error: 'Student name is required' },
+      { status: 400 }
+    )
+  }
   client = await prisma.client.create({
     data: {
       name: body.name,

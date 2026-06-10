@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { parseBody, attendanceSchema } from '@/lib/validation'
 
 export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
@@ -16,12 +17,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { facultyId, bookingId, present } = await req.json()
+  const parsed = await parseBody(req, attendanceSchema)
+  if ('error' in parsed) return parsed.error
+  const { facultyId, bookingId, present } = parsed.data
   try {
     const record = await prisma.facultyAttendance.upsert({
-      where: { facultyId_bookingId: { facultyId: Number(facultyId), bookingId: Number(bookingId) } },
+      where: { facultyId_bookingId: { facultyId, bookingId } },
       update: { present: present ?? true },
-      create: { facultyId: Number(facultyId), bookingId: Number(bookingId), present: present ?? true },
+      create: { facultyId, bookingId, present: present ?? true },
       include: { booking: true }
     })
     return NextResponse.json(record, { status: 201 })
@@ -31,9 +34,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { facultyId, bookingId } = await req.json()
+  const parsed = await parseBody(req, attendanceSchema)
+  if ('error' in parsed) return parsed.error
+  const { facultyId, bookingId } = parsed.data
   await prisma.facultyAttendance.deleteMany({
-    where: { facultyId: Number(facultyId), bookingId: Number(bookingId) }
+    where: { facultyId, bookingId }
   })
   return NextResponse.json({ success: true })
 }

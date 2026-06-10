@@ -62,6 +62,10 @@ model Batch {
   createdAt   DateTime         @default(now())
   bookings    Booking[]
   enrolments  BatchEnrolment[]
+
+  @@index([status])
+  @@index([courseId])
+  @@index([facultyId])
 }
 
 model BatchEnrolment {
@@ -70,6 +74,9 @@ model BatchEnrolment {
   clientId Int
   batch    Batch  @relation(fields: [batchId], references: [id])
   client   Client @relation(fields: [clientId], references: [id])
+
+  @@index([batchId])
+  @@index([clientId])
 }
 
 model Booking {
@@ -88,6 +95,12 @@ model Booking {
   createdAt         DateTime            @default(now())
   absences          Absence[]
   facultyAttendance FacultyAttendance[]
+
+  @@index([room, startTime, endTime])
+  @@index([startTime])
+  @@index([status])
+  @@index([clientId])
+  @@index([batchId])
 }
 
 model Absence {
@@ -99,6 +112,7 @@ model Absence {
   createdAt DateTime @default(now())
 
   @@unique([clientId, bookingId])
+  @@index([bookingId])
 }
 
 model FacultyAttendance {
@@ -111,6 +125,7 @@ model FacultyAttendance {
   createdAt DateTime @default(now())
 
   @@unique([facultyId, bookingId])
+  @@index([bookingId])
 }
 
 model Enrollment {
@@ -130,6 +145,10 @@ model Enrollment {
   course Course @relation(fields: [courseId], references: [id])
 
   payments FeePayment[]
+
+  @@index([clientId])
+  @@index([courseId])
+  @@index([status])
 }
 
 model FeePayment {
@@ -148,4 +167,6 @@ model FeePayment {
   notes String?
 
   enrollment Enrollment @relation(fields: [enrollmentId], references: [id])
+
+  @@index([enrollmentId])
 }

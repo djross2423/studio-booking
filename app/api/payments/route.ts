@@ -1,22 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { parseBody, paymentSchema } from '@/lib/validation'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  const parsed = await parseBody(req, paymentSchema)
+  if ('error' in parsed) return parsed.error
   const { enrollmentId, amount, paymentMethod, reference, notes, paymentDate } =
-    body
-
-  if (!enrollmentId || !amount || Number(amount) <= 0) {
-    return NextResponse.json(
-      { error: 'Enrollment and a positive amount are required' },
-      { status: 400 }
-    )
-  }
+    parsed.data
 
   const enrollment = await prisma.enrollment.findUnique({
-    where: { id: Number(enrollmentId) },
+    where: { id: enrollmentId },
   })
   if (!enrollment) {
     return NextResponse.json({ error: 'Enrollment not found' }, { status: 404 })
@@ -24,8 +19,8 @@ export async function POST(req: NextRequest) {
 
   const payment = await prisma.feePayment.create({
     data: {
-      enrollmentId: Number(enrollmentId),
-      amount: Number(amount),
+      enrollmentId,
+      amount,
       paymentMethod: paymentMethod || 'cash',
       reference: reference || null,
       notes: notes || null,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { parseBody, clientUpdateSchema } from '@/lib/validation'
 
 export const dynamic = 'force-dynamic'
 export async function DELETE(
@@ -24,7 +25,9 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   const id = Number(params.id)
-  const { name, phone, notes, active } = await req.json()
+  const parsed = await parseBody(req, clientUpdateSchema)
+  if ('error' in parsed) return parsed.error
+  const { name, phone, notes, active } = parsed.data
   try {
     const client = await prisma.client.update({
       where: { id },

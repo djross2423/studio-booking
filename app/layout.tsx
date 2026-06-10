@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import { Providers } from './providers'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = {
@@ -23,7 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body style={{ margin: 0, background: '#f8f8f8', minHeight: '100vh' }}>
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   )

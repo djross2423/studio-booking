@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { parseBody, facultyUpdateSchema } from '@/lib/validation'
 
 export const dynamic = 'force-dynamic'
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const { name, phone, active } = await req.json()
+  const parsed = await parseBody(req, facultyUpdateSchema)
+  if ('error' in parsed) return parsed.error
+  const { name, phone, active } = parsed.data
   const faculty = await prisma.faculty.update({
     where: { id: Number(params.id) },
     data: {

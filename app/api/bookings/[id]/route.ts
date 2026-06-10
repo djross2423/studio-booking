@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isStudioAvailable } from '@/lib/availability'
 import { updateCalendarEvent,deleteCalendarEvent } from '@/lib/google-calendar'
+import { parseBody, bookingUpdateSchema } from '@/lib/validation'
 
 export const dynamic = 'force-dynamic'
 export async function PATCH(
@@ -20,7 +21,9 @@ if (!existingBooking) {
     { status: 404 }
   )
 }
-  const body = await req.json()
+  const parsed = await parseBody(req, bookingUpdateSchema)
+  if ('error' in parsed) return parsed.error
+  const body = parsed.data
   const { clientId, room, startTime, endTime, notes, status } = body
 
   if (startTime && endTime) {

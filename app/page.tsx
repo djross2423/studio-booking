@@ -1,304 +1,148 @@
 "use client";
 
-import { useState, useEffect, useCallback, type CSSProperties } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useEnrollments,
+  useBookings,
+  useBatches,
+  useClients,
+  useFaculty,
+  useCourses,
+  useArchivedClients,
+  useArchivedFaculty,
+  useFacultyAttendance,
+  useAbsences,
+  queryKeys,
+} from "@/lib/queries";
+import {
+  useAddPayment,
+  useSaveBooking,
+  useDeleteBooking,
+  useCreateBatch,
+  useUpdateBatch,
+  useDeleteBatch,
+  usePushBatch,
+  useCreateClient,
+  useUpdateClient,
+  useDeleteClient,
+  useCreateFaculty,
+  useUpdateFaculty,
+  useDeleteFaculty,
+  useEnroll,
+  useSetEnrollmentStatus,
+  useSaveCourse,
+  useArchiveCourse,
+  useMarkAttendance,
+  useAddAbsence,
+  useRemoveAbsence,
+} from "@/lib/mutations";
+import type {
+  Client,
+  Booking,
+  BatchEnrolment,
+  Faculty,
+  FacultyAttendanceRecord,
+  Batch,
+  Course,
+  Enrollment,
+  Tab,
+} from "@/lib/types";
+import {
+  ROOMS,
+  DAYS,
+  DURATIONS,
+  fmtDate,
+  fmtTime12,
+  getDur,
+  roomBadge,
+  bookingColor,
+  fmtDateLabel,
+} from "@/lib/format";
+import { S } from "@/lib/styles";
+import { AppProvider } from "@/lib/app-context";
+import { SubTabs } from "@/components/ui/SubTabs";
+import { Avatar } from "@/components/ui/Avatar";
+import { Modal } from "@/components/ui/Modal";
+import { BookingCard } from "@/components/BookingCard";
+import { EmptyState } from "@/components/EmptyState";
+import { DatePickerInput } from "@/components/DatePickerInput";
+import { PaymentsTab } from "@/components/PaymentsTab";
+import { ArchivesTab } from "@/components/ArchivesTab";
+import { EnrollmentTab } from "@/components/EnrollmentTab";
+import { CoursesTab } from "@/components/CoursesTab";
+import { StudentsTab } from "@/components/StudentsTab";
 
 export const dynamic = 'force-dynamic'
-type Client = {
-  id: number;
-  name: string;
-  phone?: string;
-  _count?: { absences: number };
-};
-type Booking = {
-  id: number;
-  clientId?: number | null;
-  client?: Client | null;
-  room: string;
-  startTime: string;
-  endTime: string;
-  status: string;
-  notes?: string;
-  batchId?: number;
-  batch?: Batch;
-};
-type BatchEnrolment = { id: number; clientId: number; client: Client };
-type Faculty = {
-  id: number;
-  name: string;
-  phone?: string;
-  batches?: { id: number; name: string; color: string }[];
-  _count?: { attendance: number };
-};
-type FacultyAttendanceRecord = {
-  id: number;
-  facultyId: number;
-  bookingId: number;
-  present: boolean;
-  booking: { startTime: string; endTime: string; batchId?: number };
-};
-type Batch = {
-  id: number;
-  name: string;
-  room: string;
-  startTime: string;
-  duration: number;
-  repeatDays: string;
-  startDate: string;
-  endDate: string;
-  color: string;
-  status: string;
-
-  facultyId?: number;
-  faculty?: Faculty;
-
-  courseId?: number;
-  course?: {
-    id: number;
-    name: string;
-    totalSessions: number;
-    sessionDuration: number;
-    fee: number;
-  };
-
-  enrolments: BatchEnrolment[];
-  bookings: Booking[];
-};
-type Course = {
-  id: number;
-  name: string;
-  totalSessions: number;
-  sessionDuration: number;
-  fee: number;
-  color: string;
-  description?: string | null;
-};
-
-type Enrollment = {
-  id: number;
-
-  totalFee: number;
-  discount: number;
-  status: string;
-  enrolledOn: string;
-
-  client: {
-    id: number;
-    name: string;
-    phone?: string;
-  };
-
-  course: {
-    id: number;
-    name: string;
-  };
-
-  payments: {
-    id: number;
-    amount: number;
-    paymentDate: string;
-    paymentMethod?: string;
-  }[];
-};
-
-const ROOMS = [
-  { value: "dj_classroom", label: "🎧 DJ Classroom" },
-  { value: "control_room", label: "🎙️ Control Room" },
-];
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const DURATIONS = [1, 2, 3, 4, 5, 6];
-const BATCH_COLORS = [
-  "#F59E0B",
-  "#EF4444",
-  "#3B82F6",
-  "#EC4899",
-  "#14B8A6",
-  "#F97316",
-  "#84CC16",
-];
-
-function fmtDate(d: Date) {
-  const offset = d.getTimezoneOffset();
-  return new Date(d.getTime() - offset * 60000).toISOString().split("T")[0];
-}
-function fmtTime12(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-function getDur(start: string, end: string) {
-  return Math.round(
-    (new Date(end).getTime() - new Date(start).getTime()) / 3600000,
-  );
-}
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .substring(0, 2)
-    .toUpperCase();
-}
-const AV_COLORS = ["#6C3CE1", "#06D6A0", "#F59E0B", "#EF4444", "#3B82F6"];
-function avatarColor(name: string) {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
-  return AV_COLORS[Math.abs(h) % AV_COLORS.length];
-}
-function roomBadge(room: string) {
-  if (room === "dj_classroom")
-    return {
-      label: "🎧 DJ Classroom",
-      bg: "rgba(108,60,225,0.15)",
-      color: "#A78BFA",
-    };
-  return {
-    label: "🎙️ Control Room",
-    bg: "rgba(6,214,160,0.15)",
-    color: "#34D399",
-  };
-}
-function fmtDateLabel(dateStr: string) {
-  const today = fmtDate(new Date());
-  if (dateStr === today) return "Today";
-  const tom = new Date();
-  tom.setDate(tom.getDate() + 1);
-  if (dateStr === fmtDate(tom)) return "Tomorrow";
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-const S: Record<string, CSSProperties> = {
-  app: {
-    maxWidth: 480,
-    margin: "0 auto",
-    minHeight: "100vh",
-    fontFamily: "'Inter',system-ui,sans-serif",
-    background: "#0F0F14",
-    color: "#F5F5F7",
-  },
-  header: {
-    background: "linear-gradient(135deg,#5B21B6 0%,#6C3CE1 50%,#8B5CF6 100%)",
-    padding: "16px 20px 24px",
-    borderRadius: "0 0 24px 24px",
-    position: "sticky",
-    top: 0,
-    zIndex: 50,
-    boxShadow: "0 8px 32px rgba(108,60,225,0.3)",
-  },
-  page: { padding: "20px", paddingBottom: 100 },
-  tabBar: {
-    position: "fixed",
-    bottom: 0,
-    left: "50%",
-    transform: "translateX(-50%)",
-    width: "min(100%, 480px)",
-    maxWidth: 480,
-    background: "rgba(26,26,36,0.95)",
-    backdropFilter: "blur(20px)",
-    borderTop: "1px solid #2A2A3D",
-    display: "flex",
-    justifyContent: "space-around",
-    padding: "8px 4px 16px",
-    zIndex: 100,
-  },
-  card: {
-    background: "#1A1A24",
-    border: "1px solid #2A2A3D",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-  },
-  input: {
-    width: "100%",
-    background: "#242436",
-    border: "1px solid #2A2A3D",
-    borderRadius: 12,
-    padding: "14px 16px",
-    color: "#F5F5F7",
-    fontSize: 15,
-    fontFamily: "inherit",
-    outline: "none",
-    boxSizing: "border-box" as const,
-    WebkitAppearance: "none" as const,
-  },
-  label: {
-    display: "block",
-    fontSize: 13,
-    fontWeight: 600,
-    color: "#9CA3AF",
-    marginBottom: 8,
-  } as React.CSSProperties,
-  btnPrimary: {
-    background: "linear-gradient(135deg,#6C3CE1 0%,#8B5CF6 100%)",
-    color: "white",
-    border: "none",
-    padding: "14px 24px",
-    borderRadius: 14,
-    fontWeight: 600,
-    fontSize: 15,
-    cursor: "pointer",
-    width: "100%",
-    boxShadow: "0 4px 16px rgba(108,60,225,0.4)",
-  },
-  btnDanger: {
-    background: "rgba(239,68,68,0.15)",
-    color: "#EF4444",
-    border: "1px solid rgba(239,68,68,0.3)",
-    padding: "14px",
-    borderRadius: 14,
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: "pointer",
-    width: "100%",
-  },
-};
 
 export default function App() {
-  const [tab, setTab] = useState<
-    | "dashboard"
-    | "calendar"
-    | "batches"
-    | "students"
-    | "fees"
-    | "faculty"
-    | "courses"
-    | "enrollment"
-    | "archives"
-    | "payments"
-  >("dashboard");
+  const [tab, setTab] = useState<Tab>("dashboard");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [paymentTab, setPaymentTab] = useState<"received" | "pending">(
     "received",
   );
   const [paymentFilter, setPaymentFilter] = useState("");
-  const [allBookings, setAllBookings] = useState<Booking[]>([]);
-  const [batches, setBatches] = useState<Batch[]>([]);
+  const { data: batches = [] } = useBatches<Batch>();
   const [clients, setClients] = useState<Client[]>([]);
   const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
   const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+  // Bookings are fetched for a rolling window (not all-time): a band spanning
+  // a few months before the earlier of {now, viewed calendar month} to several
+  // months after the later of the two. Navigating the calendar refetches.
+  const bookingsWindow = useMemo(() => {
+    const now = new Date();
+    const viewed = new Date(calYear, calMonth, 1);
+    const lo = new Date(Math.min(now.getTime(), viewed.getTime()));
+    lo.setMonth(lo.getMonth() - 12, 1);
+    const hi = new Date(Math.max(now.getTime(), viewed.getTime()));
+    hi.setMonth(hi.getMonth() + 6, 1);
+    return { from: fmtDate(lo), to: fmtDate(hi) };
+  }, [calMonth, calYear]);
+  const { data: allBookings = [] } = useBookings<Booking>(
+    bookingsWindow.from,
+    bookingsWindow.to,
+  );
   const [selectedDate, setSelectedDate] = useState(() => fmtDate(new Date()));
   const [searchQ, setSearchQ] = useState("");
   const [roomFilter, setRoomFilter] = useState("all");
   const [showPastBookings, setShowPastBookings] = useState(false);
   const [absenceModal, setAbsenceModal] = useState<Client | null>(null);
-  const [absences, setAbsences] = useState<
-    {
-      id: number;
-      clientId: number;
-      bookingId: number;
-      booking: { startTime: string; endTime: string; batchId?: number };
-    }[]
-  >([]);
-  const [absenceLoading, setAbsenceLoading] = useState(false);
-  const [faculties, setFaculties] = useState<Faculty[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const { data: absences = [], isFetching: absenceLoading } = useAbsences<{
+    id: number;
+    clientId: number;
+    bookingId: number;
+    booking: { startTime: string; endTime: string; batchId?: number };
+  }>(absenceModal?.id ?? null);
+  const { data: faculties = [] } = useFaculty<Faculty>();
+  const { data: courses = [] } = useCourses<Course>();
+  const { data: enrollments = [] } = useEnrollments<Enrollment>();
+  const queryClient = useQueryClient();
+  const refresh = (key: readonly unknown[]) =>
+    queryClient.invalidateQueries({ queryKey: key });
+  const refreshEnrollments = () => refresh(queryKeys.enrollments);
+  const refreshBatches = () => refresh(queryKeys.batches);
+  const refreshAllClients = () => refresh(queryKeys.clients);
+  const refreshFaculties = () => refresh(queryKeys.faculty);
+  const addPayment = useAddPayment();
+  const saveBooking = useSaveBooking();
+  const deleteBooking = useDeleteBooking();
+  const createBatch = useCreateBatch();
+  const updateBatch = useUpdateBatch();
+  const deleteBatch = useDeleteBatch();
+  const pushBatch = usePushBatch();
+  const createClient = useCreateClient();
+  const updateClient = useUpdateClient();
+  const deleteClientMut = useDeleteClient();
+  const createFaculty = useCreateFaculty();
+  const updateFaculty = useUpdateFaculty();
+  const deleteFaculty = useDeleteFaculty();
+  const enroll = useEnroll();
+  const setEnrollmentStatus = useSetEnrollmentStatus();
+  const saveCourse = useSaveCourse();
+  const archiveCourse = useArchiveCourse();
+  const markAttendance = useMarkAttendance();
+  const addAbsence = useAddAbsence();
+  const removeAbsence = useRemoveAbsence();
 
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [editingCourseId, setEditingCourseId] = useState<number | null>(null);
@@ -312,9 +156,8 @@ export default function App() {
 
   const [facultyAttendanceModal, setFacultyAttendanceModal] =
     useState<Faculty | null>(null);
-  const [facultyAttendance, setFacultyAttendance] = useState<
-    FacultyAttendanceRecord[]
-  >([]);
+  const { data: facultyAttendance = [] } =
+    useFacultyAttendance<FacultyAttendanceRecord>(facultyAttendanceModal?.id);
   const [editingFacultyId, setEditingFacultyId] = useState<number | null>(null);
   const [editFacultyName, setEditFacultyName] = useState("");
   const [editFacultyPhone, setEditFacultyPhone] = useState("");
@@ -422,19 +265,13 @@ function resetEnrollmentForm() {
   const [toast, setToast] = useState("");
   const [toastOn, setToastOn] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
-  const [showNewClientDirect, setShowNewClientDirect] = useState(false);
-  const [directClientName, setDirectClientName] = useState("");
-  const [directClientPhone, setDirectClientPhone] = useState("");
-  const [allClients, setAllClients] = useState<Client[]>([]);
-  const [archivedClients, setArchivedClients] = useState<Client[]>([]);
-  const [archivedFaculties, setArchivedFaculties] = useState<Faculty[]>([]);
-  const [archiveTab, setArchiveTab] = useState<"students" | "faculty">(
-    "students",
+  const { data: allClients = [] } = useClients<Client>();
+  const { data: archivedClients = [] } = useArchivedClients<Client>(
+    tab === "archives",
   );
-  const [clientListSearch, setClientListSearch] = useState("");
-  const [editingClientId, setEditingClientId] = useState<number | null>(null);
-  const [editClientName, setEditClientName] = useState("");
-  const [editClientPhone, setEditClientPhone] = useState("");
+  const { data: archivedFaculties = [] } = useArchivedFaculty<Faculty>(
+    tab === "archives",
+  );
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -442,67 +279,58 @@ function resetEnrollmentForm() {
     setTimeout(() => setToastOn(false), 2500);
   };
 
-  const loadBookings = useCallback(async () => {
-    const res = await fetch("/api/bookings");
-    if (res.ok) setAllBookings(await res.json());
-  }, []);
-  const loadFaculties = useCallback(async () => {
-    const res = await fetch("/api/faculty");
-    if (res.ok) setFaculties(await res.json());
-  }, []);
-  const loadFacultyAttendance = useCallback(async (facultyId: number) => {
-    const res = await fetch("/api/faculty-attendance?facultyId=" + facultyId);
-    if (res.ok) setFacultyAttendance(await res.json());
-  }, []);
-  const loadAllClients = useCallback(async () => {
-    const res = await fetch("/api/clients?q=&t=" + Date.now());
-    if (res.ok) setAllClients(await res.json());
-  }, []);
-  const loadArchivedClients = useCallback(async () => {
-    const res = await fetch("/api/clients?archived=true&t=" + Date.now());
-    if (res.ok) setArchivedClients(await res.json());
-  }, []);
-  const loadArchivedFaculties = useCallback(async () => {
-    const res = await fetch("/api/faculty?archived=true&t=" + Date.now());
-    if (res.ok) setArchivedFaculties(await res.json());
-  }, []);
-  const loadAbsences = useCallback(async (clientId: number) => {
-    setAbsenceLoading(true);
-    const res = await fetch("/api/absences?clientId=" + clientId);
-    if (res.ok) setAbsences(await res.json());
-    setAbsenceLoading(false);
-  }, []);
-  const loadBatches = useCallback(async () => {
-    const res = await fetch("/api/batches");
-    if (res.ok) setBatches(await res.json());
-  }, []);
-  const loadCourses = useCallback(async () => {
-    const res = await fetch("/api/courses");
-    if (res.ok) setCourses(await res.json());
-  }, []);
-  const loadEnrollments = useCallback(async () => {
-    const res = await fetch("/api/enrollments");
+  // These now refetch their React Query data; args kept for call-site compat.
+  const loadFacultyAttendance = (_facultyId?: number) =>
+    refresh(["facultyAttendance"]);
+  const loadArchivedClients = () => refresh([...queryKeys.clients, "archived"]);
+  const loadArchivedFaculties = () =>
+    refresh([...queryKeys.faculty, "archived"]);
+  const loadAbsences = (_clientId?: number) => refresh(["absences"]);
 
-    if (res.ok) {
-      setEnrollments(await res.json());
-    }
-  }, []);
+  const openPaymentModal = (enrollment: Enrollment) => {
+    setPaymentEnrollment(enrollment);
+    setPaymentAmount("");
+    setPaymentMethod("cash");
+    setPaymentDate(fmtDate(new Date()));
+  };
+  const openAbsenceModal = (client: Client) => {
+    setAbsenceModal(client);
+    loadAbsences(client.id);
+  };
 
-  useEffect(() => {
-    loadBookings();
-    loadBatches();
-    loadAllClients();
-    loadFaculties();
-    loadCourses();
-    loadEnrollments();
-  }, [
-    loadBookings,
-    loadBatches,
-    loadAllClients,
-    loadFaculties,
-    loadCourses,
-    loadEnrollments,
-  ]);
+  // Cross-cutting services shared with all tab/modal components via context.
+  const services = {
+    showToast,
+    setTab,
+    openPaymentModal,
+    openAbsenceModal,
+    saveBooking,
+    deleteBooking,
+    createBatch,
+    updateBatch,
+    deleteBatch,
+    pushBatch,
+    createClient,
+    updateClient,
+    deleteClient: deleteClientMut,
+    createFaculty,
+    updateFaculty,
+    deleteFaculty,
+    enroll,
+    setEnrollmentStatus,
+    saveCourse,
+    archiveCourse,
+    addPayment,
+    markAttendance,
+    addAbsence,
+    removeAbsence,
+    refreshEnrollments,
+    refreshBatches,
+    refreshAllClients,
+    refreshFaculties,
+    loadArchivedClients,
+    loadArchivedFaculties,
+  };
 
   useEffect(() => {
     if (!showBookingModal) return;
@@ -577,11 +405,6 @@ function resetEnrollmentForm() {
       .sort((a, b) => a.startTime.localeCompare(b.startTime));
   }
 
-  function bookingColor(b: Booking) {
-    if (b.batchId && b.batch) return b.batch.color;
-    return b.room === "dj_classroom" ? "#8B5CF6" : "#06D6A0";
-  }
-
   // Booking modal handlers
   function openNew() {
     setEditBooking(null);
@@ -620,12 +443,11 @@ function resetEnrollmentForm() {
     setFormError("");
     setShowBookingModal(true);
   }
-  async function handleBookingSubmit() {
+  function handleBookingSubmit() {
     if (!bookingForm.clientId || !bookingForm.date || !bookingForm.startTime) {
       setFormError("Please fill in required fields");
       return;
     }
-    setLoading(true);
     setFormError("");
     const start = new Date(`${bookingForm.date}T${bookingForm.startTime}:00`);
     const end = new Date(start);
@@ -638,42 +460,32 @@ function resetEnrollmentForm() {
       notes: bookingForm.notes,
       sessionType: bookingForm.type,
     };
-    const url = editBooking
-      ? `/api/bookings/${editBooking.id}`
-      : "/api/bookings";
-    const res = await fetch(url, {
-      method: editBooking ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    setLoading(false);
-    if (!res.ok) {
-      setFormError(data.error);
-      return;
-    }
-    setShowBookingModal(false);
-    loadBookings();
-    showToast(editBooking ? "Booking updated!" : "Booking created!");
+    const wasEdit = !!editBooking;
+    saveBooking.mutate(
+      { id: editBooking?.id, body },
+      {
+        onSuccess: () => {
+          setShowBookingModal(false);
+          showToast(wasEdit ? "Booking updated!" : "Booking created!");
+        },
+      },
+    );
   }
-  async function handleBookingDelete(id: number) {
+  function handleBookingDelete(id: number) {
     if (!confirm("Cancel this booking?")) return;
-    await fetch(`/api/bookings/${id}`, { method: "DELETE" });
-    loadBookings();
-    showToast("Booking cancelled");
-    setShowBookingModal(false);
+    deleteBooking.mutate(id, {
+      onSuccess: () => {
+        showToast("Booking cancelled");
+        setShowBookingModal(false);
+      },
+    });
   }
   async function handleNewClient() {
     if (!newClientName.trim()) return;
-    const res = await fetch("/api/clients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: newClientName.trim(),
-        phone: newClientPhone.trim(),
-      }),
+    const c = await createClient.mutateAsync({
+      name: newClientName.trim(),
+      phone: newClientPhone.trim(),
     });
-    const c = await res.json();
     setBookingForm((f) => ({ ...f, clientId: String(c.id) }));
     setClientSearch(c.name);
     setShowNewClient(false);
@@ -766,12 +578,12 @@ function resetEnrollmentForm() {
       );
       return;
     }
-    setLoading(true);
     setFormError("");
     const batchCount = batches.length;
 
     const name = batchForm.name || autoName(batchForm.dayPair, batchCount);
 
+    const totalSessions = selectedCourse!.totalSessions;
     const body = {
       name,
       room: batchForm.room,
@@ -781,38 +593,28 @@ function resetEnrollmentForm() {
       startDate: batchForm.startDate,
       endDate: "",
       clientIds: batchForm.clientIds,
-      totalSessions: selectedCourse!.totalSessions,
+      totalSessions,
       facultyId: batchForm.facultyId ? Number(batchForm.facultyId) : undefined,
       courseId: Number(batchForm.courseId),
     };
-    const res = await fetch("/api/batches", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+    createBatch.mutate(body, {
+      onSuccess: () => {
+        setShowBatchModal(false);
+        showToast(`Batch created! ${totalSessions} sessions booked.`);
+      },
     });
-    const data = await res.json();
-    setLoading(false);
-    if (!res.ok) {
-      setFormError(data.error);
-      return;
-    }
-    setShowBatchModal(false);
-    loadBookings();
-    loadBatches();
-    showToast(
-      `Batch created! ${selectedCourse!.totalSessions} sessions booked.`,
-    );
   }
-  async function handleCancelBatch(id: number) {
+  function handleCancelBatch(id: number) {
     if (
       !confirm("Delete this batch and ALL its sessions? This cannot be undone.")
     )
       return;
-    await fetch(`/api/batches/${id}`, { method: "DELETE" });
-    loadBookings();
-    loadBatches();
-    setSelectedBatch(null);
-    showToast("Batch deleted");
+    deleteBatch.mutate(id, {
+      onSuccess: () => {
+        setSelectedBatch(null);
+        showToast("Batch deleted");
+      },
+    });
   }
 
   // Calendar
@@ -879,605 +681,10 @@ function resetEnrollmentForm() {
     (c) => c.id === Number(batchForm.courseId),
   );
 
-  function DatePickerInput({
-    value,
-    onChange,
-    room,
-  }: {
-    value: string;
-    onChange: (d: string) => void;
-    room: string;
-  }) {
-    const [open, setOpen] = useState(false);
-    const [pickerMonth, setPickerMonth] = useState(() =>
-      value ? new Date(value + "T00:00:00").getMonth() : new Date().getMonth(),
-    );
-    const [pickerYear, setPickerYear] = useState(() =>
-      value
-        ? new Date(value + "T00:00:00").getFullYear()
-        : new Date().getFullYear(),
-    );
-    const DAYS_SHORT = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-    const monthNames = [
-      "January",
-      "February",
-      "March",
-      "April",
-      "May",
-      "June",
-      "July",
-      "August",
-      "September",
-      "October",
-      "November",
-      "December",
-    ];
-    const firstDay = new Date(pickerYear, pickerMonth, 1).getDay();
-    const daysInMonth = new Date(pickerYear, pickerMonth + 1, 0).getDate();
-    const prevDays = new Date(pickerYear, pickerMonth, 0).getDate();
-    const cells: { day: number; dateStr: string; cur: boolean }[] = [];
-    for (let i = firstDay - 1; i >= 0; i--)
-      cells.push({ day: prevDays - i, dateStr: "", cur: false });
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${pickerYear}-${String(pickerMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-      cells.push({ day: d, dateStr, cur: true });
-    }
-    const rem = (7 - (cells.length % 7)) % 7;
-    for (let i = 1; i <= rem; i++)
-      cells.push({ day: i, dateStr: "", cur: false });
 
-    // Find booked slots per date for this room
-    const TIME_SLOTS = ["10:00", "12:00", "14:00", "16:00", "18:00", "20:00"];
-    const roomBookings = allBookings.filter(
-      (b) => b.room === room && b.status !== "cancelled",
-    );
-
-    // For each date, check how many of the 6 standard slots are taken
-    const getBookedSlots = (dateStr: string) => {
-      return TIME_SLOTS.filter((slot) => {
-        const [h, m] = slot.split(":").map(Number);
-        const slotStart = new Date(dateStr + "T00:00:00");
-        slotStart.setHours(h, m, 0, 0);
-        const slotEnd = new Date(slotStart);
-        slotEnd.setHours(slotEnd.getHours() + 2);
-        return roomBookings.some((b) => {
-          const bs = new Date(b.startTime),
-            be = new Date(b.endTime);
-          return bs < slotEnd && be > slotStart;
-        });
-      }).length;
-    };
-    const todayStr = fmtDate(new Date());
-
-    const displayValue = value
-      ? new Date(value + "T00:00:00").toLocaleDateString("en-IN", {
-          weekday: "short",
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        })
-      : "Select date";
-
-    return (
-      <div style={{ position: "relative" }}>
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          style={{
-            ...S.input,
-            textAlign: "left",
-            cursor: "pointer",
-            color: value ? "#F5F5F7" : "#6B7280",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <span>{displayValue}</span>
-          <span style={{ color: "#6B7280" }}>📅</span>
-        </button>
-        {open && (
-          <div
-            style={{
-              position: "absolute",
-              top: "calc(100% + 8px)",
-              left: 0,
-              right: 0,
-              background: "#1A1A24",
-              border: "1px solid #2A2A3D",
-              borderRadius: 16,
-              padding: 16,
-              zIndex: 300,
-              boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 12,
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  let m = pickerMonth - 1,
-                    y = pickerYear;
-                  if (m < 0) {
-                    m = 11;
-                    y--;
-                  }
-                  setPickerMonth(m);
-                  setPickerYear(y);
-                }}
-                style={{
-                  background: "#242436",
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "6px 10px",
-                  color: "white",
-                  cursor: "pointer",
-                }}
-              >
-                ‹
-              </button>
-              <span style={{ fontSize: 14, fontWeight: 600 }}>
-                {monthNames[pickerMonth]} {pickerYear}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  let m = pickerMonth + 1,
-                    y = pickerYear;
-                  if (m > 11) {
-                    m = 0;
-                    y++;
-                  }
-                  setPickerMonth(m);
-                  setPickerYear(y);
-                }}
-                style={{
-                  background: "#242436",
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "6px 10px",
-                  color: "white",
-                  cursor: "pointer",
-                }}
-              >
-                ›
-              </button>
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(7,1fr)",
-                gap: 4,
-              }}
-            >
-              {DAYS_SHORT.map((d) => (
-                <div
-                  key={d}
-                  style={{
-                    textAlign: "center",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: "#6B7280",
-                    padding: "4px 0",
-                  }}
-                >
-                  {d}
-                </div>
-              ))}
-              {cells.map((cell, i) => {
-                const bookedSlots = cell.cur ? getBookedSlots(cell.dateStr) : 0;
-                const isFullyBooked = cell.cur && bookedSlots >= 6;
-                const isPartiallyBooked =
-                  cell.cur && bookedSlots > 0 && bookedSlots < 6;
-                const isPast = cell.cur && cell.dateStr < todayStr;
-                const isSelected = cell.dateStr === value;
-                const isToday = cell.dateStr === todayStr;
-                return (
-                  <button
-                    type="button"
-                    key={i}
-                    onClick={() => {
-                      if (!cell.cur || isFullyBooked) return;
-                      onChange(cell.dateStr);
-                      setOpen(false);
-                    }}
-                    style={{
-                      aspectRatio: "1",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderRadius: 8,
-                      fontSize: 13,
-                      fontWeight: isToday ? 700 : 500,
-                      border: "none",
-                      cursor:
-                        !cell.cur || isFullyBooked ? "default" : "pointer",
-                      background: isSelected
-                        ? "#6C3CE1"
-                        : isFullyBooked
-                          ? "rgba(239,68,68,0.1)"
-                          : "transparent",
-                      color: !cell.cur
-                        ? "#2A2A3D"
-                        : isSelected
-                          ? "white"
-                          : isFullyBooked
-                            ? "#4B3030"
-                            : isPast
-                              ? "#4B5563"
-                              : isToday
-                                ? "#8B5CF6"
-                                : "#F5F5F7",
-                      position: "relative",
-                      textDecoration:
-                        isFullyBooked && !isSelected ? "line-through" : "none",
-                      opacity: !cell.cur ? 0 : 1,
-                    }}
-                  >
-                    {cell.day}
-                    {isPartiallyBooked && !isSelected && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          bottom: 2,
-                          left: "50%",
-                          transform: "translateX(-50%)",
-                          display: "flex",
-                          gap: 1,
-                        }}
-                      >
-                        {Array.from({ length: bookedSlots }).map((_, i) => (
-                          <div
-                            key={i}
-                            style={{
-                              width: 3,
-                              height: 3,
-                              background: "#F59E0B",
-                              borderRadius: "50%",
-                            }}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    {isFullyBooked && !isSelected && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          bottom: 2,
-                          left: "50%",
-                          transform: "translateX(-50%)",
-                          width: 4,
-                          height: 4,
-                          background: "#EF4444",
-                          borderRadius: "50%",
-                        }}
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            <div
-              style={{
-                marginTop: 12,
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 8,
-                fontSize: 11,
-                color: "#6B7280",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <div
-                  style={{
-                    width: 8,
-                    height: 8,
-                    background: "#F59E0B",
-                    borderRadius: "50%",
-                  }}
-                />
-                Partially booked
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <div
-                  style={{
-                    width: 8,
-                    height: 8,
-                    background: "rgba(239,68,68,0.3)",
-                    borderRadius: 2,
-                  }}
-                />
-                Fully booked
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <div
-                  style={{
-                    width: 8,
-                    height: 8,
-                    background: "#6C3CE1",
-                    borderRadius: 2,
-                  }}
-                />
-                Selected
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  function BookingCard({ b, onClick }: { b: Booking; onClick?: () => void }) {
-    const badge = roomBadge(b.room);
-    const dur = getDur(b.startTime, b.endTime);
-    const leftColor = bookingColor(b);
-    const _bStart = new Date(b.startTime);
-    const _todayM = new Date();
-    _todayM.setHours(0, 0, 0, 0);
-    const _tomorrowM = new Date(_todayM);
-    _tomorrowM.setDate(_tomorrowM.getDate() + 1);
-    const isBookingToday = _bStart >= _todayM && _bStart < _tomorrowM;
-    return (
-      <div
-        onClick={onClick}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          padding: 14,
-          background: isBookingToday ? "rgba(108,60,225,0.12)" : "#1A1A24",
-          border: isBookingToday
-            ? "1.5px solid rgba(108,60,225,0.5)"
-            : "1px solid #2A2A3D",
-          borderRadius: 14,
-          marginBottom: 10,
-          position: "relative",
-          overflow: "hidden",
-          cursor: onClick ? "pointer" : "default",
-        }}
-      >
-        {isBookingToday && (
-          <div
-            style={{
-              position: "absolute",
-              top: 8,
-              right: onClick ? 28 : 10,
-              fontSize: 10,
-              fontWeight: 700,
-              color: "#8B5CF6",
-              background: "rgba(108,60,225,0.2)",
-              padding: "2px 6px",
-              borderRadius: 6,
-            }}
-          >
-            TODAY
-          </div>
-        )}
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 4,
-            background: leftColor,
-            borderRadius: "0 4px 4px 0",
-          }}
-        />
-        <div
-          style={{
-            background: "#242436",
-            padding: "6px 8px",
-            borderRadius: 10,
-            fontSize: 12,
-            fontWeight: 600,
-            textAlign: "center",
-            minWidth: 68,
-            lineHeight: 1.5,
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ color: "#9CA3AF", fontSize: 10 }}>
-            {new Date(b.startTime).toLocaleDateString("en-IN", {
-              weekday: "short",
-            })}
-          </div>
-          <div style={{ color: "#9CA3AF", fontSize: 10 }}>
-            {new Date(b.startTime).toLocaleDateString("en-IN", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            })}
-          </div>
-          <div>{fmtTime12(b.startTime)}</div>
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {b.batch ? (
-            <div style={{ marginBottom: 4 }}>
-              <div
-                style={{
-                  fontWeight: 600,
-                  fontSize: 13,
-                  marginBottom: 6,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {b.batch.name}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 6,
-                  flexWrap: "wrap",
-                  marginBottom: 4,
-                }}
-              >
-                {b.batch.enrolments?.map((e) => (
-                  <div
-                    key={e.id}
-                    style={{ display: "flex", alignItems: "center", gap: 5 }}
-                  >
-                    <div
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 6,
-                        background: avatarColor(e.client.name),
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: 700,
-                        fontSize: 10,
-                        color: "white",
-                      }}
-                    >
-                      {getInitials(e.client.name)}
-                    </div>
-                    <span style={{ fontSize: 12, color: "#D1D5DB" }}>
-                      {e.client.name}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 4,
-              }}
-            >
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
-                  background: avatarColor(b.client?.name || "Unknown"),
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: 700,
-                  fontSize: 12,
-                  color: "white",
-                  flexShrink: 0,
-                }}
-              >
-                {getInitials(b.client?.name || "Unknown")}
-              </div>
-
-              <div
-                style={{
-                  fontWeight: 600,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {b.client?.name || "Unknown Student"}
-              </div>
-            </div>
-          )}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              flexWrap: "wrap",
-            }}
-          >
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                padding: "3px 8px",
-                borderRadius: 8,
-                fontSize: 11,
-                fontWeight: 600,
-                background: badge.bg,
-                color: badge.color,
-              }}
-            >
-              {badge.label}
-            </span>
-            {(b as any).sessionType === "demo" && (
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  padding: "3px 8px",
-                  borderRadius: 8,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  background: "rgba(99,102,241,0.15)",
-                  color: "#818CF8",
-                }}
-              >
-                🎯 Demo
-              </span>
-            )}
-            {(b as any).sessionType === "practice" && (
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  padding: "3px 8px",
-                  borderRadius: 8,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  background: "rgba(16,185,129,0.15)",
-                  color: "#34D399",
-                }}
-              >
-                🎧 Practice
-              </span>
-            )}
-            {b.batch && (
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  padding: "3px 8px",
-                  borderRadius: 8,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  background: `${b.batch.color}22`,
-                  color: b.batch.color,
-                }}
-              >
-                📚 {b.batch.name}
-              </span>
-            )}
-          </div>
-        </div>
-        {onClick && (
-          <div style={{ color: "#6B7280", fontSize: 18, flexShrink: 0 }}>›</div>
-        )}
-      </div>
-    );
-  }
-
-  function EmptyState({ text }: { text: string }) {
-    return (
-      <div
-        style={{ textAlign: "center", padding: "40px 20px", color: "#4B5563" }}
-      >
-        <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>📭</div>
-        <div style={{ fontSize: 13 }}>{text}</div>
-      </div>
-    );
-  }
 
   return (
+    <AppProvider value={services}>
     <div style={S.app}>
       <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
@@ -1664,7 +871,7 @@ function resetEnrollmentForm() {
             }}
           >
             <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>
-              Today's Schedule
+              Today&apos;s Schedule
             </h2>
             <span style={{ fontSize: 13, color: "#6B7280" }}>
               {todayBookings.length} session
@@ -2159,24 +1366,20 @@ function resetEnrollmentForm() {
                   <div style={{ marginBottom: 12 }}>
                     <select
                       defaultValue={selectedBatch.facultyId || ""}
-                      onChange={async (e) => {
-                        const res = await fetch(
-                          "/api/batches/" + selectedBatch.id,
+                      onChange={(e) => {
+                        updateBatch.mutate(
                           {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              facultyId: e.target.value || null,
-                            }),
+                            id: selectedBatch.id,
+                            body: { facultyId: e.target.value || null },
+                          },
+                          {
+                            onSuccess: (data) => {
+                              setSelectedBatch(data);
+                              setShowChangeFaculty(false);
+                              showToast("Faculty updated");
+                            },
                           },
                         );
-                        const data = await res.json();
-                        if (res.ok) {
-                          setSelectedBatch(data);
-                          loadBatches();
-                          setShowChangeFaculty(false);
-                          showToast("Faculty updated");
-                        } else showToast("Error updating faculty");
                       }}
                       style={S.input}
                     >
@@ -2264,30 +1467,22 @@ function resetEnrollmentForm() {
                         .map((c) => (
                           <div
                             key={c.id}
-                            onClick={async () => {
-                              const res = await fetch(
-                                "/api/batches/" + selectedBatch.id,
+                            onClick={() => {
+                              updateBatch.mutate(
                                 {
-                                  method: "PATCH",
-                                  headers: {
-                                    "Content-Type": "application/json",
+                                  id: selectedBatch.id,
+                                  body: { addClientId: c.id },
+                                },
+                                {
+                                  onSuccess: (data) => {
+                                    setSelectedBatch(data);
+                                    setAddStudentSearch("");
+                                    setAddStudentResults([]);
+                                    setShowAddStudent(false);
+                                    showToast(c.name + " added to batch");
                                   },
-                                  body: JSON.stringify({ addClientId: c.id }),
                                 },
                               );
-                              const data = await res.json();
-                              if (res.ok) {
-                                setSelectedBatch(data);
-                                loadBatches();
-
-                                setAddStudentSearch("");
-                                setAddStudentResults([]);
-
-                                setShowAddStudent(false);
-
-                                showToast(c.name + " added to batch");
-                              } else
-                                showToast(data.error || "Error adding student");
                             }}
                             style={{
                               padding: "10px 12px",
@@ -2300,22 +1495,7 @@ function resetEnrollmentForm() {
                               gap: 8,
                             }}
                           >
-                            <div
-                              style={{
-                                width: 28,
-                                height: 28,
-                                borderRadius: 8,
-                                background: avatarColor(c.name),
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontWeight: 700,
-                                fontSize: 11,
-                                color: "white",
-                              }}
-                            >
-                              {getInitials(c.name)}
-                            </div>
+                            <Avatar name={c.name} size={28} radius={8} fontSize={11} />
                             {c.name}
                           </div>
                         ))}
@@ -2334,49 +1514,30 @@ function resetEnrollmentForm() {
                           padding: "8px 12px",
                         }}
                       >
-                        <div
-                          style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 8,
-                            background: avatarColor(e.client.name),
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontWeight: 700,
-                            fontSize: 11,
-                            color: "white",
-                          }}
-                        >
-                          {getInitials(e.client.name)}
-                        </div>
+                        <Avatar name={e.client.name} size={28} radius={8} fontSize={11} />
                         <span style={{ fontSize: 13, fontWeight: 500 }}>
                           {e.client.name}
                         </span>
                         <button
-                          onClick={async () => {
+                          onClick={() => {
                             if (
                               !confirm(
                                 "Remove " + e.client.name + " from batch?",
                               )
                             )
                               return;
-                            const res = await fetch(
-                              "/api/batches/" + selectedBatch.id,
+                            updateBatch.mutate(
                               {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  removeClientId: e.clientId,
-                                }),
+                                id: selectedBatch.id,
+                                body: { removeClientId: e.clientId },
+                              },
+                              {
+                                onSuccess: (data) => {
+                                  setSelectedBatch(data);
+                                  showToast(e.client.name + " removed");
+                                },
                               },
                             );
-                            const data = await res.json();
-                            if (res.ok) {
-                              setSelectedBatch(data);
-                              loadBatches();
-                              showToast(e.client.name + " removed");
-                            }
                           }}
                           style={{
                             background: "none",
@@ -2452,37 +1613,25 @@ function resetEnrollmentForm() {
                                 )
                               )
                                 return;
-                              const res = await fetch(
-                                "/api/batches/" + selectedBatch.id + "/push",
+                              pushBatch.mutate(
                                 {
-                                  method: "POST",
-                                  headers: {
-                                    "Content-Type": "application/json",
+                                  id: selectedBatch.id,
+                                  body: { fromBookingId: b.id },
+                                },
+                                {
+                                  onSuccess: async (data) => {
+                                    const refreshed = await fetch(
+                                      "/api/batches/" + selectedBatch.id,
+                                    );
+                                    if (refreshed.ok) {
+                                      setSelectedBatch(await refreshed.json());
+                                    }
+                                    showToast(
+                                      data.shifted + " sessions pushed forward",
+                                    );
                                   },
-                                  body: JSON.stringify({ fromBookingId: b.id }),
                                 },
                               );
-                              const data = await res.json();
-
-                              if (res.ok) {
-                                await loadBookings();
-                                await loadBatches();
-
-                                const refreshed = await fetch(
-                                  "/api/batches/" + selectedBatch.id,
-                                );
-
-                                if (refreshed.ok) {
-                                  setSelectedBatch(await refreshed.json());
-                                }
-
-                                showToast(
-                                  data.shifted + " sessions pushed forward",
-                                );
-                              } else
-                                showToast(
-                                  data.error || "Error pushing sessions",
-                                );
                             }}
                             style={{
                               background: "rgba(245,158,11,0.15)",
@@ -2506,32 +1655,25 @@ function resetEnrollmentForm() {
                               )
                             )
                               return;
-                            const res = await fetch(
-                              "/api/batches/" + selectedBatch.id + "/push",
+                            pushBatch.mutate(
                               {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ fromBookingId: b.id }),
+                                id: selectedBatch.id,
+                                body: { fromBookingId: b.id },
+                              },
+                              {
+                                onSuccess: async (data) => {
+                                  const refreshed = await fetch(
+                                    "/api/batches/" + selectedBatch.id,
+                                  );
+                                  if (refreshed.ok) {
+                                    setSelectedBatch(await refreshed.json());
+                                  }
+                                  showToast(
+                                    data.shifted + " sessions pushed forward",
+                                  );
+                                },
                               },
                             );
-                            const data = await res.json();
-                            if (res.ok) {
-                              await loadBookings();
-                              await loadBatches();
-
-                              const refreshed = await fetch(
-                                "/api/batches/" + selectedBatch.id,
-                              );
-
-                              if (refreshed.ok) {
-                                setSelectedBatch(await refreshed.json());
-                              }
-
-                              showToast(
-                                data.shifted + " sessions pushed forward",
-                              );
-                            } else
-                              showToast(data.error || "Error pushing sessions");
                           }}
                           style={{
                             background: "rgba(108,60,225,0.15)",
@@ -2601,45 +1743,14 @@ function resetEnrollmentForm() {
                 </button>
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  background: "#1A1A24",
-                  border: "1px solid #2A2A3D",
-                  borderRadius: 12,
-                  padding: 4,
-                  marginBottom: 16,
-                }}
-              >
-                {(
-                  [
-                    ["active", `Active (${activeBatches.length})`],
-                    ["completed", `Completed (${completedBatches.length})`],
-                  ] as const
-                ).map(([id, label]) => (
-                  <button
-                    key={id}
-                    onClick={() => setBatchTab(id)}
-                    style={{
-                      flex: 1,
-                      padding: "8px 12px",
-                      borderRadius: 9,
-                      border: "none",
-                      background:
-                        batchTab === id
-                          ? "linear-gradient(135deg,#6C3CE1,#8B5CF6)"
-                          : "transparent",
-                      color: batchTab === id ? "white" : "#9CA3AF",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <SubTabs
+                value={batchTab}
+                onChange={setBatchTab}
+                tabs={[
+                  ["active", `Active (${activeBatches.length})`],
+                  ["completed", `Completed (${completedBatches.length})`],
+                ]}
+              />
 
               {shownBatches.length === 0 ? (
                 <EmptyState
@@ -2748,23 +1859,13 @@ function resetEnrollmentForm() {
                       }}
                     >
                       {batch.enrolments.map((e) => (
-                        <div
+                        <Avatar
                           key={e.id}
-                          style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 8,
-                            background: avatarColor(e.client.name),
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontWeight: 700,
-                            fontSize: 11,
-                            color: "white",
-                          }}
-                        >
-                          {getInitials(e.client.name)}
-                        </div>
+                          name={e.client.name}
+                          size={28}
+                          radius={8}
+                          fontSize={11}
+                        />
                       ))}
                       <span
                         style={{
@@ -2958,1143 +2059,38 @@ function resetEnrollmentForm() {
 
       {/* Enrollment */}
       {tab === "enrollment" && (
-        <div style={S.page}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 16,
-            }}
-          >
-            <h2
-              style={{
-                margin: 0,
-                fontSize: 17,
-                fontWeight: 700,
-              }}
-            >
-              Enrollment
-            </h2>
-
-            <button
-              onClick={() => {
-                resetEnrollmentForm()
-                setShowEnrollmentModal(true)
-              }}
-              style={{
-                background: "linear-gradient(135deg,#6C3CE1,#8B5CF6)",
-                border: "none",
-                borderRadius: 10,
-                padding: "8px 14px",
-                color: "white",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              + Enroll Student
-            </button>
-          </div>
-
-          {enrollments.length === 0 && (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "40px 20px",
-                color: "#4B5563",
-              }}
-            >
-              No enrollments yet
-            </div>
-          )}
-
-          {enrollments.map((enrollment) => {
-            const paid = enrollment.payments.reduce(
-              (sum, p) => sum + p.amount,
-              0,
-            );
-
-            const balance = enrollment.totalFee - enrollment.discount - paid;
-            const isPaused = enrollment.status === "paused";
-            const currentBatch = batches.find(
-              (b) =>
-                b.courseId === enrollment.course.id &&
-                b.enrolments.some((e) => e.clientId === enrollment.client.id),
-            );
-
-            return (
-              <div
-                key={enrollment.id}
-                style={{
-                  background: "#1A1A24",
-                  border: "1px solid #2A2A3D",
-                  borderRadius: 14,
-                  padding: 16,
-                  marginBottom: 12,
-                }}
-              >
-                <div
-                  style={{
-                    fontWeight: 700,
-                    fontSize: 15,
-                  }}
-                >
-                  {enrollment.client.name}
-                </div>
-
-                {enrollment.client.phone && (
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: "#9CA3AF",
-                      marginTop: 2,
-                    }}
-                  >
-                    {enrollment.client.phone}
-                  </div>
-                )}
-
-                <div
-                  style={{
-                    marginTop: 12,
-                    fontSize: 13,
-                  }}
-                >
-                  📘 {enrollment.course.name}
-                </div>
-
-                <div
-                  style={{
-                    marginTop: 6,
-                    fontSize: 12,
-                    color: "#6B7280",
-                  }}
-                >
-                  📅 Enrolled{" "}
-                  {new Date(enrollment.enrolledOn).toLocaleDateString("en-IN", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  })}
-                </div>
-
-                <div
-                  style={{
-                    marginTop: 6,
-                    fontSize: 13,
-                    color: isPaused
-                      ? "#9CA3AF"
-                      : currentBatch
-                        ? "#8B5CF6"
-                        : "#F59E0B",
-                  }}
-                >
-                  {isPaused
-                    ? "⏸ Paused"
-                    : currentBatch
-                      ? `📚 ${currentBatch.name}`
-                      : "⚠ Batch Not Assigned"}
-                </div>
-
-                <div
-                  style={{
-                    marginTop: 12,
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr 1fr 1fr",
-                    gap: 8,
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: 11, color: "#6B7280" }}>Fee</div>
-                    <div style={{ fontWeight: 700 }}>
-                      ₹{enrollment.totalFee.toLocaleString()}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: 11, color: "#6B7280" }}>Paid</div>
-                    <div style={{ fontWeight: 700, color: "#10B981" }}>
-                      ₹{paid.toLocaleString()}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: 11, color: "#6B7280" }}>Discount</div>
-                    <div style={{ fontWeight: 700, color: "#8B5CF6" }}>
-                      {enrollment.discount > 0
-                        ? `₹${enrollment.discount.toLocaleString()}`
-                        : "—"}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "#6B7280",
-                      }}
-                    >
-                      Balance
-                    </div>
-
-                    <div
-                      style={{
-                        fontWeight: 700,
-                        color: balance > 0 ? "#EF4444" : "#10B981",
-                      }}
-                    >
-                      ₹{balance.toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    marginTop: 14,
-                  }}
-                >
-                  <button
-                    onClick={() => {
-                      setPaymentEnrollment(enrollment);
-                      setPaymentAmount("");
-                      setPaymentMethod("cash");
-                      setPaymentDate(fmtDate(new Date()));
-                    }}
-                    style={{
-                      flex: 1,
-                      background: "rgba(16,185,129,.15)",
-                      border: "1px solid rgba(16,185,129,.3)",
-                      color: "#10B981",
-                      borderRadius: 8,
-                      padding: "8px",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Add Payment
-                  </button>
-
-                  {!isPaused && (
-                    <button
-                      onClick={() => {
-                        loadBatches();
-                        setTab("batches");
-                      }}
-                      style={{
-                        flex: 1,
-                        background: "rgba(108,60,225,.15)",
-                        border: "1px solid rgba(108,60,225,.3)",
-                        color: "#8B5CF6",
-                        borderRadius: 8,
-                        padding: "8px",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Assign Batch
-                    </button>
-                  )}
-
-                  <button
-                    onClick={async () => {
-                      const next = isPaused ? "active" : "paused";
-                      if (
-                        next === "paused" &&
-                        !confirm(
-                          `Pause ${enrollment.client.name}'s course?` +
-                            (currentBatch
-                              ? ` They'll be removed from ${currentBatch.name}.`
-                              : ""),
-                        )
-                      )
-                        return;
-                      const res = await fetch(
-                        "/api/enrollments/" + enrollment.id,
-                        {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ status: next }),
-                        },
-                      );
-                      if (res.ok) {
-                        loadEnrollments();
-                        loadBatches();
-                        showToast(
-                          next === "paused"
-                            ? "Course paused"
-                            : "Course resumed",
-                        );
-                      } else {
-                        showToast("Error updating course");
-                      }
-                    }}
-                    style={{
-                      flex: 1,
-                      background: isPaused
-                        ? "rgba(16,185,129,.15)"
-                        : "rgba(245,158,11,.15)",
-                      border: isPaused
-                        ? "1px solid rgba(16,185,129,.3)"
-                        : "1px solid rgba(245,158,11,.3)",
-                      color: isPaused ? "#10B981" : "#F59E0B",
-                      borderRadius: 8,
-                      padding: "8px",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {isPaused ? "▶ Resume" : "⏸ Pause"}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <EnrollmentTab
+          enrollments={enrollments}
+          batches={batches}
+          setShowEnrollmentModal={setShowEnrollmentModal}
+          resetEnrollmentForm={resetEnrollmentForm}
+        />
       )}
 
       {/* Students */}
       {tab === "students" && (
-        <div style={S.page}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 16,
-            }}
-          >
-            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>
-              Students
-            </h2>
-            <button
-              onClick={() => {
-                setShowNewClientDirect(true);
-              }}
-              style={{
-                background: "linear-gradient(135deg,#6C3CE1,#8B5CF6)",
-                border: "none",
-                borderRadius: 10,
-                padding: "8px 14px",
-                color: "white",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              + Add Student
-            </button>
-          </div>
-          {showNewClientDirect && (
-            <div
-              style={{
-                background: "#1A1A24",
-                border: "1px solid #2A2A3D",
-                borderRadius: 14,
-                padding: 16,
-                marginBottom: 16,
-              }}
-            >
-              <input
-                value={directClientName}
-                onChange={(e) => setDirectClientName(e.target.value)}
-                placeholder="Student name *"
-                style={{ ...S.input, marginBottom: 8 }}
-              />
-              <input
-                value={directClientPhone}
-                onChange={(e) => setDirectClientPhone(e.target.value)}
-                placeholder="Phone (optional)"
-                style={{ ...S.input, marginBottom: 8 }}
-              />
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  disabled={!directClientName.trim() || loading}
-                  onClick={async () => {
-                    if (!directClientName.trim() || loading) return;
-                    setLoading(true);
-                    const res = await fetch("/api/clients", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        name: directClientName.trim(),
-                        phone: directClientPhone.trim(),
-                      }),
-                    });
-                    setLoading(false);
-                    if (res.ok) {
-                      setDirectClientName("");
-                      setDirectClientPhone("");
-                      setShowNewClientDirect(false);
-                      loadAllClients();
-                      showToast("Student added!");
-                    }
-                  }}
-                  style={{
-                    flex: 1,
-                    background:
-                      !directClientName.trim() || loading
-                        ? "#3A2E5C"
-                        : "#6C3CE1",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 10,
-                    padding: "10px",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor:
-                      !directClientName.trim() || loading
-                        ? "not-allowed"
-                        : "pointer",
-                    opacity: !directClientName.trim() || loading ? 0.6 : 1,
-                  }}
-                >
-                  {loading ? "Saving..." : "Save"}
-                </button>
-                <button
-                  onClick={() => setShowNewClientDirect(false)}
-                  style={{
-                    background: "none",
-                    border: "1px solid #2A2A3D",
-                    color: "#9CA3AF",
-                    borderRadius: 10,
-                    padding: "10px 16px",
-                    fontSize: 13,
-                    cursor: "pointer",
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-          <div
-            style={{
-              background: "#242436",
-              border: "1px solid #2A2A3D",
-              borderRadius: 12,
-              padding: "12px 16px",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 16,
-            }}
-          >
-            <span style={{ color: "#9CA3AF" }}>🔍</span>
-            <input
-              value={clientListSearch}
-              onChange={(e) => setClientListSearch(e.target.value)}
-              placeholder="Search students..."
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "#F5F5F7",
-                fontSize: 14,
-                outline: "none",
-                width: "100%",
-                fontFamily: "inherit",
-              }}
-            />
-          </div>
-          {allClients
-            .filter(
-              (c) =>
-                !clientListSearch ||
-                c.name.toLowerCase().includes(clientListSearch.toLowerCase()),
-            )
-            .map((c) => (
-              <div
-                key={c.id}
-                style={{
-                  background: "#1A1A24",
-                  border: "1px solid #2A2A3D",
-                  borderRadius: 14,
-                  marginBottom: 10,
-                  overflow: "hidden",
-                }}
-              >
-                {editingClientId === c.id ? (
-                  <div style={{ padding: 14 }}>
-                    <input
-                      value={editClientName}
-                      onChange={(e) => setEditClientName(e.target.value)}
-                      placeholder="Name *"
-                      style={{ ...S.input, marginBottom: 8 }}
-                    />
-                    <input
-                      value={editClientPhone}
-                      onChange={(e) => setEditClientPhone(e.target.value)}
-                      placeholder="Phone (optional)"
-                      style={{ ...S.input, marginBottom: 10 }}
-                    />
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        onClick={async () => {
-                          const res = await fetch("/api/clients/" + c.id, {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              name: editClientName,
-                              phone: editClientPhone,
-                            }),
-                          });
-                          if (res.ok) {
-                            setEditingClientId(null);
-                            loadAllClients();
-                            showToast("Student updated");
-                          }
-                        }}
-                        style={{
-                          flex: 1,
-                          background: "#6C3CE1",
-                          color: "white",
-                          border: "none",
-                          borderRadius: 10,
-                          padding: "10px",
-                          fontSize: 13,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => setEditingClientId(null)}
-                        style={{
-                          background: "none",
-                          border: "1px solid #2A2A3D",
-                          color: "#9CA3AF",
-                          borderRadius: 10,
-                          padding: "10px 16px",
-                          fontSize: 13,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      padding: 14,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 10,
-                        background: avatarColor(c.name),
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: 700,
-                        fontSize: 14,
-                        color: "white",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {getInitials(c.name)}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: 15 }}>
-                        {c.name}
-                      </div>
-                      {c.phone && (
-                        <div
-                          style={{
-                            fontSize: 13,
-                            color: "#9CA3AF",
-                            marginTop: 2,
-                          }}
-                        >
-                          {c.phone}
-                        </div>
-                      )}
-                      <div
-                        style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}
-                      >
-                        {(() => {
-                          const nowMidnight = new Date();
-                          nowMidnight.setHours(0, 0, 0, 0);
-                          const remainingBatch = batches
-                            .filter((bt) =>
-                              bt.enrolments.some((e) => e.clientId === c.id),
-                            )
-                            .reduce(
-                              (sum, bt) =>
-                                sum +
-                                bt.bookings.filter(
-                                  (b) => new Date(b.startTime) >= nowMidnight,
-                                ).length,
-                              0,
-                            );
-                          const remainingDirect = allBookings.filter(
-                            (b) =>
-                              b.clientId === c.id &&
-                              !b.batchId &&
-                              new Date(b.startTime) >= nowMidnight,
-                          ).length;
-                          const absenceCount = c._count?.absences || 0;
-                          const total = remainingBatch + remainingDirect;
-                          return (
-                            <>
-                              {total} session{total !== 1 ? "s" : ""} left
-                              {absenceCount > 0 ? (
-                                <span style={{ color: "#EF4444" }}>
-                                  {" "}
-                                  · {absenceCount} absent
-                                </span>
-                              ) : null}
-                            </>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 6,
-                      }}
-                    >
-                      <button
-                        onClick={() => {
-                          setEditingClientId(c.id);
-                          setEditClientName(c.name);
-                          setEditClientPhone(c.phone ?? "");
-                        }}
-                        style={{
-                          background: "rgba(108,60,225,0.15)",
-                          border: "1px solid rgba(108,60,225,0.3)",
-                          color: "#8B5CF6",
-                          borderRadius: 8,
-                          padding: "5px 10px",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => {
-                          setAbsenceModal(c);
-                          loadAbsences(c.id);
-                        }}
-                        style={{
-                          background: "rgba(245,158,11,0.15)",
-                          border: "1px solid rgba(245,158,11,0.3)",
-                          color: "#F59E0B",
-                          borderRadius: 8,
-                          padding: "5px 10px",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Attendance
-                      </button>
-                      <button
-                        onClick={async () => {
-                          if (!confirm("Archive " + c.name + "?")) return;
-                          const res = await fetch("/api/clients/" + c.id, {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ active: false }),
-                          });
-                          if (res.ok) {
-                            setAllClients((prev) =>
-                              prev.filter((cl) => cl.id !== c.id),
-                            );
-                            showToast("Student archived");
-                          } else {
-                            showToast("Error archiving student");
-                          }
-                        }}
-                        style={{
-                          background: "rgba(245,158,11,0.15)",
-                          border: "1px solid rgba(245,158,11,0.3)",
-                          color: "#F59E0B",
-                          borderRadius: 8,
-                          padding: "5px 10px",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Archive
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          {allClients.length === 0 && (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "40px 20px",
-                color: "#4B5563",
-              }}
-            >
-              <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>
-                👥
-              </div>
-              <div style={{ fontSize: 13 }}>No students yet</div>
-            </div>
-          )}
-        </div>
+        <StudentsTab
+          allClients={allClients}
+          batches={batches}
+          allBookings={allBookings}
+        />
       )}
 
-      {tab === "payments" &&
-        (() => {
-          const q = paymentFilter.trim().toLowerCase();
-          const received = enrollments
-            .flatMap((e) =>
-              e.payments.map((p) => ({
-                key: p.id,
-                name: e.client.name,
-                amount: p.amount,
-                date: p.paymentDate,
-                method: p.paymentMethod,
-              })),
-            )
-            .filter((r) => r.name.toLowerCase().includes(q))
-            .sort(
-              (a, b) =>
-                new Date(b.date).getTime() - new Date(a.date).getTime(),
-            );
-          const pending = enrollments
-            .map((e) => {
-              const paid = e.payments.reduce((s, p) => s + p.amount, 0);
-              return {
-                key: e.id,
-                name: e.client.name,
-                balance: e.totalFee - e.discount - paid,
-              };
-            })
-            .filter((p) => p.balance > 0)
-            .filter((p) => p.name.toLowerCase().includes(q));
-
-          return (
-            <div style={S.page}>
-              <h2 style={{ margin: "0 0 16px", fontSize: 17, fontWeight: 700 }}>
-                💳 Payments
-              </h2>
-
-              {/* Sub-tabs */}
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  background: "#1A1A24",
-                  border: "1px solid #2A2A3D",
-                  borderRadius: 12,
-                  padding: 4,
-                  marginBottom: 12,
-                }}
-              >
-                {(
-                  [
-                    ["received", `Received (${received.length})`],
-                    ["pending", `Pending (${pending.length})`],
-                  ] as const
-                ).map(([id, label]) => (
-                  <button
-                    key={id}
-                    onClick={() => setPaymentTab(id)}
-                    style={{
-                      flex: 1,
-                      padding: "8px 12px",
-                      borderRadius: 9,
-                      border: "none",
-                      background:
-                        paymentTab === id
-                          ? "linear-gradient(135deg,#6C3CE1,#8B5CF6)"
-                          : "transparent",
-                      color: paymentTab === id ? "white" : "#9CA3AF",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Student name filter */}
-              <input
-                value={paymentFilter}
-                onChange={(e) => setPaymentFilter(e.target.value)}
-                placeholder="Filter by student name..."
-                style={{ ...S.input, marginBottom: 16 }}
-              />
-
-              {paymentTab === "received" &&
-                received.map((r) => (
-                  <div
-                    key={r.key}
-                    style={{
-                      background: "#1A1A24",
-                      border: "1px solid #2A2A3D",
-                      borderRadius: 14,
-                      padding: 16,
-                      marginBottom: 10,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 15 }}>
-                        {r.name}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#9CA3AF",
-                          marginTop: 4,
-                        }}
-                      >
-                        📅{" "}
-                        {new Date(r.date).toLocaleDateString("en-IN", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                        {r.method ? ` · ${r.method}` : ""}
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        fontWeight: 700,
-                        fontSize: 16,
-                        color: "#10B981",
-                      }}
-                    >
-                      ₹{r.amount.toLocaleString()}
-                    </div>
-                  </div>
-                ))}
-
-              {paymentTab === "pending" &&
-                pending.map((p) => (
-                  <div
-                    key={p.key}
-                    style={{
-                      background: "#1A1A24",
-                      border: "1px solid #2A2A3D",
-                      borderRadius: 14,
-                      padding: 16,
-                      marginBottom: 10,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>
-                      {p.name}
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 11, color: "#6B7280" }}>
-                        Balance
-                      </div>
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          fontSize: 16,
-                          color: "#F59E0B",
-                        }}
-                      >
-                        ₹{p.balance.toLocaleString()}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-              {((paymentTab === "received" && received.length === 0) ||
-                (paymentTab === "pending" && pending.length === 0)) && (
-                <div
-                  style={{
-                    textAlign: "center",
-                    padding: "40px 20px",
-                    color: "#4B5563",
-                  }}
-                >
-                  <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>
-                    💳
-                  </div>
-                  <div style={{ fontSize: 13 }}>
-                    {paymentTab === "received"
-                      ? "No payments received"
-                      : "No pending payments"}
-                    {q ? " for that name" : ""}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()}
+      {tab === "payments" && (
+        <PaymentsTab
+          enrollments={enrollments}
+          paymentTab={paymentTab}
+          setPaymentTab={setPaymentTab}
+          paymentFilter={paymentFilter}
+          setPaymentFilter={setPaymentFilter}
+        />
+      )}
 
       {tab === "archives" && (
-        <div style={S.page}>
-          <h2 style={{ margin: "0 0 16px", fontSize: 17, fontWeight: 700 }}>
-            🗄️ Archives
-          </h2>
-
-          {/* Sub-tabs */}
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              background: "#1A1A24",
-              border: "1px solid #2A2A3D",
-              borderRadius: 12,
-              padding: 4,
-              marginBottom: 16,
-            }}
-          >
-            {(
-              [
-                ["students", `Students (${archivedClients.length})`],
-                ["faculty", `Faculty (${archivedFaculties.length})`],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                onClick={() => setArchiveTab(id)}
-                style={{
-                  flex: 1,
-                  padding: "8px 12px",
-                  borderRadius: 9,
-                  border: "none",
-                  background:
-                    archiveTab === id
-                      ? "linear-gradient(135deg,#6C3CE1,#8B5CF6)"
-                      : "transparent",
-                  color: archiveTab === id ? "white" : "#9CA3AF",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* Archived students */}
-          {archiveTab === "students" &&
-            archivedClients.map((c) => (
-            <div
-              key={c.id}
-              style={{
-                background: "#1A1A24",
-                border: "1px solid #2A2A3D",
-                borderRadius: 14,
-                padding: 14,
-                marginBottom: 10,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{c.name}</div>
-                {c.phone && (
-                  <div style={{ fontSize: 12, color: "#9CA3AF" }}>
-                    {c.phone}
-                  </div>
-                )}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={async () => {
-                    const res = await fetch("/api/clients/" + c.id, {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ active: true }),
-                    });
-                    if (res.ok) {
-                      setArchivedClients((prev) =>
-                        prev.filter((cl) => cl.id !== c.id),
-                      );
-                      loadAllClients();
-                      showToast("Student restored");
-                    }
-                  }}
-                  style={{
-                    background: "rgba(16,185,129,0.15)",
-                    border: "1px solid rgba(16,185,129,0.3)",
-                    color: "#10B981",
-                    borderRadius: 8,
-                    padding: "5px 10px",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Restore
-                </button>
-                <button
-                  onClick={async () => {
-                    if (
-                      !confirm(
-                        "Permanently delete " +
-                          c.name +
-                          "? This will remove all their bookings and cannot be undone.",
-                      )
-                    )
-                      return;
-                    const res = await fetch("/api/clients/" + c.id, {
-                      method: "DELETE",
-                    });
-                    if (res.ok) {
-                      setArchivedClients((prev) =>
-                        prev.filter((cl) => cl.id !== c.id),
-                      );
-                      loadBookings();
-                      showToast("Student deleted");
-                    } else {
-                      showToast("Error deleting student");
-                    }
-                  }}
-                  style={{
-                    background: "rgba(239,68,68,0.15)",
-                    border: "1px solid rgba(239,68,68,0.3)",
-                    color: "#EF4444",
-                    borderRadius: 8,
-                    padding: "5px 10px",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {/* Archived faculty */}
-          {archiveTab === "faculty" &&
-            archivedFaculties.map((f) => (
-            <div
-              key={f.id}
-              style={{
-                background: "#1A1A24",
-                border: "1px solid #2A2A3D",
-                borderRadius: 14,
-                padding: 14,
-                marginBottom: 10,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{f.name}</div>
-                {f.phone && (
-                  <div style={{ fontSize: 12, color: "#9CA3AF" }}>
-                    {f.phone}
-                  </div>
-                )}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={async () => {
-                    const res = await fetch("/api/faculty/" + f.id, {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ active: true }),
-                    });
-                    if (res.ok) {
-                      setArchivedFaculties((prev) =>
-                        prev.filter((fl) => fl.id !== f.id),
-                      );
-                      loadFaculties();
-                      showToast("Faculty restored");
-                    }
-                  }}
-                  style={{
-                    background: "rgba(16,185,129,0.15)",
-                    border: "1px solid rgba(16,185,129,0.3)",
-                    color: "#10B981",
-                    borderRadius: 8,
-                    padding: "5px 10px",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Restore
-                </button>
-                <button
-                  onClick={async () => {
-                    if (
-                      !confirm(
-                        "Permanently delete " +
-                          f.name +
-                          "? This cannot be undone.",
-                      )
-                    )
-                      return;
-                    const res = await fetch("/api/faculty/" + f.id, {
-                      method: "DELETE",
-                    });
-                    if (res.ok) {
-                      setArchivedFaculties((prev) =>
-                        prev.filter((fl) => fl.id !== f.id),
-                      );
-                      showToast("Faculty deleted");
-                    }
-                  }}
-                  style={{
-                    background: "rgba(239,68,68,0.15)",
-                    border: "1px solid rgba(239,68,68,0.3)",
-                    color: "#EF4444",
-                    borderRadius: 8,
-                    padding: "5px 10px",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {((archiveTab === "students" && archivedClients.length === 0) ||
-            (archiveTab === "faculty" && archivedFaculties.length === 0)) && (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "40px 20px",
-                color: "#4B5563",
-              }}
-            >
-              <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>
-                🗄️
-              </div>
-              <div style={{ fontSize: 13 }}>
-                No archived {archiveTab === "students" ? "students" : "faculty"}
-              </div>
-            </div>
-          )}
-        </div>
+        <ArchivesTab
+          archivedClients={archivedClients}
+          archivedFaculties={archivedFaculties}
+        />
       )}
 
       {showMoreMenu && (
@@ -4126,7 +2122,7 @@ function resetEnrollmentForm() {
             <button
               onClick={() => {
                 setShowMoreMenu(false);
-                loadAllClients();
+                refreshAllClients();
                 setTab("students");
               }}
               style={{
@@ -4144,7 +2140,7 @@ function resetEnrollmentForm() {
             <button
               onClick={() => {
                 setShowMoreMenu(false);
-                loadFaculties();
+                refreshFaculties();
                 setTab("faculty");
               }}
               style={{
@@ -4199,7 +2195,7 @@ function resetEnrollmentForm() {
             <button
               onClick={() => {
                 setShowMoreMenu(false);
-                loadEnrollments();
+                refreshEnrollments();
                 setPaymentTab("received");
                 setPaymentFilter("");
                 setTab("payments");
@@ -4515,6 +2511,7 @@ function resetEnrollmentForm() {
                       setBookingForm((prev) => ({ ...prev, date: d }))
                     }
                     room={bookingForm.room}
+                    allBookings={allBookings}
                   />
                 ) : (
                   <input
@@ -4548,10 +2545,10 @@ function resetEnrollmentForm() {
             )}
             <button
               onClick={handleBookingSubmit}
-              disabled={loading}
+              disabled={saveBooking.isPending}
               style={S.btnPrimary}
             >
-              {loading
+              {saveBooking.isPending
                 ? "Saving..."
                 : editBooking
                   ? "Save Changes"
@@ -4817,6 +2814,7 @@ function resetEnrollmentForm() {
                 value={batchForm.startDate}
                 onChange={(d) => setBatchForm((f) => ({ ...f, startDate: d }))}
                 room={batchForm.room}
+                allBookings={allBookings}
               />
               {batchForm.dayPair &&
                 batchForm.startDate &&
@@ -5072,10 +3070,10 @@ function resetEnrollmentForm() {
             )}
             <button
               onClick={handleBatchSubmit}
-              disabled={loading}
+              disabled={createBatch.isPending}
               style={S.btnPrimary}
             >
-              {loading
+              {createBatch.isPending
                 ? `Booking ${selectedCourse!.totalSessions} sessions...`
                 : "Create Batch & Book All Sessions"}
             </button>
@@ -5098,30 +3096,11 @@ function resetEnrollmentForm() {
         </div>
       )}
       {showCourseModal && (
-        <div
-          onClick={() => setShowCourseModal(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.7)",
-            backdropFilter: "blur(4px)",
-            zIndex: 250,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
+        <Modal
+          onClose={() => setShowCourseModal(false)}
+          zIndex={250}
+          overlayStyle={{ backdropFilter: "blur(4px)" }}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "90%",
-              maxWidth: 420,
-              background: "#1A1A24",
-              border: "1px solid #2A2A3D",
-              borderRadius: 16,
-              padding: 20,
-            }}
-          >
             <h2 style={{ margin: "0 0 16px", fontSize: 18 }}>Add Course</h2>
 
             <input
@@ -5164,43 +3143,33 @@ function resetEnrollmentForm() {
             />
 
             <button
-              onClick={async () => {
-                const url = editingCourseId
-                  ? `/api/courses/${editingCourseId}`
-                  : "/api/courses";
-
-                const method = editingCourseId ? "PATCH" : "POST";
-
-                const res = await fetch(url, {
-                  method,
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    name: courseName,
-                    description: courseDescription,
-                    fee: Number(courseFee),
-                    totalSessions: Number(courseSessions),
-                    sessionDuration: Number(courseDuration),
-                    color: courseColor,
-                  }),
-                });
-                if (res.ok) {
-                  setCourseName("");
-                  setCourseDescription("");
-                  setCourseFee("");
-                  setCourseSessions("");
-                  setCourseDuration("");
-
-                  setEditingCourseId(null);
-
-                  loadCourses();
-                  setShowCourseModal(false);
-
-                  showToast(
-                    editingCourseId ? "Course updated" : "Course created",
-                  );
-                } else {
-                  showToast("Failed to create course");
-                }
+              onClick={() => {
+                const wasEdit = !!editingCourseId;
+                saveCourse.mutate(
+                  {
+                    id: editingCourseId ?? undefined,
+                    body: {
+                      name: courseName,
+                      description: courseDescription,
+                      fee: Number(courseFee),
+                      totalSessions: Number(courseSessions),
+                      sessionDuration: Number(courseDuration),
+                      color: courseColor,
+                    },
+                  },
+                  {
+                    onSuccess: () => {
+                      setCourseName("");
+                      setCourseDescription("");
+                      setCourseFee("");
+                      setCourseSessions("");
+                      setCourseDuration("");
+                      setEditingCourseId(null);
+                      setShowCourseModal(false);
+                      showToast(wasEdit ? "Course updated" : "Course created");
+                    },
+                  },
+                );
               }}
               style={S.btnPrimary}
             >
@@ -5224,8 +3193,7 @@ function resetEnrollmentForm() {
             >
               Cancel
             </button>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {paymentEnrollment &&
@@ -5239,29 +3207,7 @@ function resetEnrollmentForm() {
           const entered = Number(paymentAmount) || 0;
           const remaining = balance - entered;
           return (
-            <div
-              onClick={() => setPaymentEnrollment(null)}
-              style={{
-                position: "fixed",
-                inset: 0,
-                background: "rgba(0,0,0,.7)",
-                zIndex: 260,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  width: "90%",
-                  maxWidth: 420,
-                  background: "#1A1A24",
-                  border: "1px solid #2A2A3D",
-                  borderRadius: 16,
-                  padding: 20,
-                }}
-              >
+            <Modal onClose={() => setPaymentEnrollment(null)}>
                 <h2 style={{ margin: "0 0 4px", fontSize: 18 }}>Add Payment</h2>
                 <div style={{ fontSize: 13, color: "#9CA3AF", marginBottom: 8 }}>
                   {paymentEnrollment.client.name} · 📘{" "}
@@ -5372,29 +3318,27 @@ function resetEnrollmentForm() {
                     Cancel
                   </button>
                   <button
-                    disabled={loading || entered <= 0}
-                    onClick={async () => {
+                    disabled={addPayment.isPending || entered <= 0}
+                    onClick={() => {
                       if (entered <= 0) return;
-                      setLoading(true);
-                      const res = await fetch("/api/payments", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
+                      addPayment.mutate(
+                        {
                           enrollmentId: paymentEnrollment.id,
                           amount: entered,
                           paymentMethod,
                           paymentDate,
-                        }),
-                      });
-                      setLoading(false);
-                      if (res.ok) {
-                        setPaymentEnrollment(null);
-                        loadEnrollments();
-                        showToast("Payment of ₹" + entered.toLocaleString() + " added");
-                      } else {
-                        const data = await res.json();
-                        showToast(data.error || "Failed to add payment");
-                      }
+                        },
+                        {
+                          onSuccess: () => {
+                            setPaymentEnrollment(null);
+                            showToast(
+                              "Payment of ₹" +
+                                entered.toLocaleString() +
+                                " added",
+                            );
+                          },
+                        },
+                      );
                     }}
                     style={{
                       flex: 1,
@@ -5411,11 +3355,10 @@ function resetEnrollmentForm() {
                       opacity: entered > 0 ? 1 : 0.5,
                     }}
                   >
-                    Save Payment
+                    {addPayment.isPending ? "Saving…" : "Save Payment"}
                   </button>
                 </div>
-              </div>
-            </div>
+            </Modal>
           );
         })()}
 
@@ -5666,55 +3609,29 @@ onClick={() => {
               </button>
 
               <button
-                onClick={async () => {
+                disabled={enroll.isPending}
+                onClick={() => {
                   if (!enrollmentForm.name || !enrollmentForm.courseId) {
                     showToast("Name and Course required");
                     return;
                   }
-
-                  const res = await fetch("/api/enrollments", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
+                  enroll.mutate(
+                    { ...enrollmentForm, clientId: selectedClientId },
+                    {
+                      onSuccess: () => {
+                        resetEnrollmentForm();
+                        setShowEnrollmentModal(false);
+                        showToast("Student enrolled!");
+                      },
                     },
-                    body: JSON.stringify({
-                      ...enrollmentForm,
-                      clientId: selectedClientId,
-                    }),
-                  });
-
-                  const data = await res.json();
-
-                  if (res.ok) {
-                    await loadEnrollments();
-
-                    setEnrollmentForm({
-                      name: "",
-                      phone: "",
-                      courseId: "",
-                      totalFee: "",
-                      discount: "0",
-                      initialPayment: "",
-                      paymentMethod: "cash",
-                      enrolledOn: fmtDate(new Date()),
-                    });
-
-                    setSelectedClientId(null);
-                    setEnrollmentSearch("");
-
-                    setShowEnrollmentModal(false);
-
-                    showToast("Student enrolled!");
-                  } else {
-                    showToast(data.error || "Enrollment failed");
-                  }
+                  );
                 }}
                 style={{
                   ...S.btnPrimary,
                   flex: 1,
                 }}
               >
-                Enroll Student
+                {enroll.isPending ? "Enrolling…" : "Enroll Student"}
               </button>
             </div>
           </div>
@@ -5722,143 +3639,16 @@ onClick={() => {
       )}
       {/* Courses */}
       {tab === "courses" && (
-        <div style={S.page}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 16,
-            }}
-          >
-            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>
-              Courses
-            </h2>
-
-            <button
-              onClick={() => setShowCourseModal(true)}
-              style={{
-                background: "linear-gradient(135deg,#6C3CE1,#8B5CF6)",
-                border: "none",
-                borderRadius: 10,
-                padding: "8px 14px",
-                color: "white",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              + Add Course
-            </button>
-          </div>
-          {courses.map((course) => (
-            <div
-              key={course.id}
-              style={{
-                background: "#1A1A24",
-                border: "1px solid #2A2A3D",
-                borderRadius: 16,
-                padding: 16,
-                marginBottom: 12,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 16,
-                  fontWeight: 700,
-                  marginBottom: 8,
-                }}
-              >
-                {course.name}
-              </div>
-
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "#9CA3AF",
-                  lineHeight: 1.8,
-                }}
-              >
-                📚 {course.totalSessions} Sessions
-                <br />⏱ {course.sessionDuration} Hours
-                <br />
-                💰 ₹{course.fee.toLocaleString()}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  marginTop: 12,
-                }}
-              >
-                <button
-                  onClick={() => {
-                    setEditingCourseId(course.id);
-
-                    setCourseName(course.name);
-                    setCourseDescription(course.description || "");
-                    setCourseFee(String(course.fee));
-                    setCourseSessions(String(course.totalSessions));
-                    setCourseDuration(String(course.sessionDuration));
-
-                    setShowCourseModal(true);
-                  }}
-                  style={{
-                    flex: 1,
-                    background: "rgba(108,60,225,0.15)",
-                    border: "1px solid rgba(108,60,225,0.3)",
-                    color: "#8B5CF6",
-                    borderRadius: 10,
-                    padding: "10px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Edit
-                </button>
-
-                <button
-                  onClick={async () => {
-                    if (!confirm(`Archive "${course.name}"?`)) return;
-
-                    const res = await fetch(`/api/courses/${course.id}`, {
-                      method: "DELETE",
-                    });
-
-                    if (res.ok) {
-                      loadCourses();
-                      showToast("Course archived");
-                    } else {
-                      showToast("Archive failed");
-                    }
-                  }}
-                  style={{
-                    flex: 1,
-                    background: "rgba(239,68,68,0.15)",
-                    border: "1px solid rgba(239,68,68,0.3)",
-                    color: "#EF4444",
-                    borderRadius: 10,
-                    padding: "10px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Archive
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {courses.length === 0 && (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "40px 20px",
-                color: "#6B7280",
-              }}
-            >
-              No courses yet
-            </div>
-          )}
-        </div>
+        <CoursesTab
+          courses={courses}
+          setShowCourseModal={setShowCourseModal}
+          setEditingCourseId={setEditingCourseId}
+          setCourseName={setCourseName}
+          setCourseDescription={setCourseDescription}
+          setCourseFee={setCourseFee}
+          setCourseSessions={setCourseSessions}
+          setCourseDuration={setCourseDuration}
+        />
       )}
 
       {/* Faculty */}
@@ -5998,23 +3788,22 @@ onClick={() => {
               />
               <div style={{ display: "flex", gap: 8 }}>
                 <button
-                  onClick={async () => {
+                  onClick={() => {
                     if (!newFacultyName.trim()) return;
-                    const res = await fetch("/api/faculty", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
+                    createFaculty.mutate(
+                      {
                         name: newFacultyName.trim(),
                         phone: newFacultyPhone.trim(),
-                      }),
-                    });
-                    if (res.ok) {
-                      setNewFacultyName("");
-                      setNewFacultyPhone("");
-                      setShowNewFaculty(false);
-                      loadFaculties();
-                      showToast("Faculty added!");
-                    }
+                      },
+                      {
+                        onSuccess: () => {
+                          setNewFacultyName("");
+                          setNewFacultyPhone("");
+                          setShowNewFaculty(false);
+                          showToast("Faculty added!");
+                        },
+                      },
+                    );
                   }}
                   style={{
                     flex: 1,
@@ -6110,20 +3899,22 @@ onClick={() => {
                     />
                     <div style={{ display: "flex", gap: 8 }}>
                       <button
-                        onClick={async () => {
-                          const res = await fetch("/api/faculty/" + f.id, {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              name: editFacultyName,
-                              phone: editFacultyPhone,
-                            }),
-                          });
-                          if (res.ok) {
-                            setEditingFacultyId(null);
-                            loadFaculties();
-                            showToast("Faculty updated");
-                          }
+                        onClick={() => {
+                          updateFaculty.mutate(
+                            {
+                              id: f.id,
+                              body: {
+                                name: editFacultyName,
+                                phone: editFacultyPhone,
+                              },
+                            },
+                            {
+                              onSuccess: () => {
+                                setEditingFacultyId(null);
+                                showToast("Faculty updated");
+                              },
+                            },
+                          );
                         }}
                         style={{
                           flex: 1,
@@ -6280,17 +4071,12 @@ onClick={() => {
                         Attend.
                       </button>
                       <button
-                        onClick={async () => {
+                        onClick={() => {
                           if (!confirm("Archive " + f.name + "?")) return;
-                          const res = await fetch("/api/faculty/" + f.id, {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ active: false }),
-                          });
-                          if (res.ok) {
-                            loadFaculties();
-                            showToast("Faculty archived");
-                          }
+                          updateFaculty.mutate(
+                            { id: f.id, body: { active: false } },
+                            { onSuccess: () => showToast("Faculty archived") },
+                          );
                         }}
                         style={{
                           background: "rgba(245,158,11,0.15)",
@@ -6580,20 +4366,11 @@ onClick={() => {
                                     )
                                   )
                                     return;
-                                  await fetch("/api/faculty-attendance", {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                    },
-                                    body: JSON.stringify({
-                                      facultyId: facultyAttendanceModal!.id,
-                                      bookingId: s.id,
-                                      present: true,
-                                    }),
+                                  markAttendance.mutate({
+                                    facultyId: facultyAttendanceModal!.id,
+                                    bookingId: s.id,
+                                    present: true,
                                   });
-                                  loadFacultyAttendance(
-                                    facultyAttendanceModal!.id,
-                                  );
                                 }}
                                 style={{
                                   padding: "6px 10px",
@@ -6622,20 +4399,11 @@ onClick={() => {
                                     )
                                   )
                                     return;
-                                  await fetch("/api/faculty-attendance", {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                    },
-                                    body: JSON.stringify({
-                                      facultyId: facultyAttendanceModal!.id,
-                                      bookingId: s.id,
-                                      present: false,
-                                    }),
+                                  markAttendance.mutate({
+                                    facultyId: facultyAttendanceModal!.id,
+                                    bookingId: s.id,
+                                    present: false,
                                   });
-                                  loadFacultyAttendance(
-                                    facultyAttendanceModal!.id,
-                                  );
                                 }}
                                 style={{
                                   padding: "6px 10px",
@@ -6736,20 +4504,11 @@ onClick={() => {
                                     )
                                   )
                                     return;
-                                  await fetch("/api/faculty-attendance", {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                    },
-                                    body: JSON.stringify({
-                                      facultyId: facultyAttendanceModal.id,
-                                      bookingId: s.id,
-                                      present: true,
-                                    }),
+                                  markAttendance.mutate({
+                                    facultyId: facultyAttendanceModal.id,
+                                    bookingId: s.id,
+                                    present: true,
                                   });
-                                  loadFacultyAttendance(
-                                    facultyAttendanceModal.id,
-                                  );
                                 }}
                                 style={{
                                   padding: "6px 10px",
@@ -6776,20 +4535,11 @@ onClick={() => {
                                     )
                                   )
                                     return;
-                                  await fetch("/api/faculty-attendance", {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                    },
-                                    body: JSON.stringify({
-                                      facultyId: facultyAttendanceModal.id,
-                                      bookingId: s.id,
-                                      present: false,
-                                    }),
+                                  markAttendance.mutate({
+                                    facultyId: facultyAttendanceModal.id,
+                                    bookingId: s.id,
+                                    present: false,
                                   });
-                                  loadFacultyAttendance(
-                                    facultyAttendanceModal.id,
-                                  );
                                 }}
                                 style={{
                                   padding: "6px 10px",
@@ -7066,7 +4816,11 @@ onClick={() => {
                               </div>
                             </div>
                             <button
-                              onClick={async () => {
+                              onClick={() => {
+                                const body = {
+                                  clientId: absenceModal!.id,
+                                  bookingId: s.id,
+                                };
                                 if (isAbsent) {
                                   if (
                                     !confirm(
@@ -7076,16 +4830,7 @@ onClick={() => {
                                     )
                                   )
                                     return;
-                                  await fetch("/api/absences", {
-                                    method: "DELETE",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                    },
-                                    body: JSON.stringify({
-                                      clientId: absenceModal!.id,
-                                      bookingId: s.id,
-                                    }),
-                                  });
+                                  removeAbsence.mutate(body);
                                 } else {
                                   if (
                                     !confirm(
@@ -7095,19 +4840,8 @@ onClick={() => {
                                     )
                                   )
                                     return;
-                                  await fetch("/api/absences", {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                    },
-                                    body: JSON.stringify({
-                                      clientId: absenceModal!.id,
-                                      bookingId: s.id,
-                                    }),
-                                  });
+                                  addAbsence.mutate(body);
                                 }
-                                loadAbsences(absenceModal!.id);
-                                loadAllClients();
                               }}
                               style={{
                                 padding: "6px 12px",
@@ -7191,32 +4925,16 @@ onClick={() => {
                               </div>
                             </div>
                             <button
-                              onClick={async () => {
+                              onClick={() => {
+                                const body = {
+                                  clientId: absenceModal.id,
+                                  bookingId: s.id,
+                                };
                                 if (isAbsent) {
-                                  await fetch("/api/absences", {
-                                    method: "DELETE",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                    },
-                                    body: JSON.stringify({
-                                      clientId: absenceModal.id,
-                                      bookingId: s.id,
-                                    }),
-                                  });
+                                  removeAbsence.mutate(body);
                                 } else {
-                                  await fetch("/api/absences", {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                    },
-                                    body: JSON.stringify({
-                                      clientId: absenceModal.id,
-                                      bookingId: s.id,
-                                    }),
-                                  });
+                                  addAbsence.mutate(body);
                                 }
-                                loadAbsences(absenceModal.id);
-                                loadAllClients();
                               }}
                               style={{
                                 padding: "6px 12px",
@@ -7269,5 +4987,6 @@ onClick={() => {
         {toast}
       </div>
     </div>
+    </AppProvider>
   );
 }

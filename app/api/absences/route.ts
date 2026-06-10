@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { parseBody, absenceSchema } from '@/lib/validation'
 
 export const dynamic = 'force-dynamic'
 // GET absences for a client
@@ -18,12 +19,13 @@ export async function GET(req: NextRequest) {
 
 // POST - mark absent
 export async function POST(req: NextRequest) {
-  const { clientId, bookingId } = await req.json()
-  if (!clientId || !bookingId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
+  const parsed = await parseBody(req, absenceSchema)
+  if ('error' in parsed) return parsed.error
+  const { clientId, bookingId } = parsed.data
 
   try {
     const absence = await prisma.absence.create({
-      data: { clientId: Number(clientId), bookingId: Number(bookingId) },
+      data: { clientId, bookingId },
       include: { booking: true }
     })
     return NextResponse.json(absence, { status: 201 })
@@ -34,9 +36,11 @@ export async function POST(req: NextRequest) {
 
 // DELETE - remove absence
 export async function DELETE(req: NextRequest) {
-  const { clientId, bookingId } = await req.json()
+  const parsed = await parseBody(req, absenceSchema)
+  if ('error' in parsed) return parsed.error
+  const { clientId, bookingId } = parsed.data
   await prisma.absence.deleteMany({
-    where: { clientId: Number(clientId), bookingId: Number(bookingId) }
+    where: { clientId, bookingId }
   })
   return NextResponse.json({ success: true })
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isStudioAvailable } from '@/lib/availability'
 import { updateCalendarEvent } from '@/lib/google-calendar'
+import { parseBody, batchPushSchema } from '@/lib/validation'
 
 export const dynamic = 'force-dynamic'
 export async function POST(
@@ -9,7 +10,9 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   const batchId = Number(params.id)
-  const { fromBookingId } = await req.json()
+  const parsed = await parseBody(req, batchPushSchema)
+  if ('error' in parsed) return parsed.error
+  const { fromBookingId } = parsed.data
 
   const batch = await prisma.batch.findUnique({
     where: { id: batchId },
@@ -78,40 +81,34 @@ export async function POST(
     }
   }
 
-// Apply all shifts + update Google Calendar
-for (const s of shifts) {
-  const booking = await prisma.booking.update({
-    where: { id: s.id },
-    data: {
-      startTime: s.newStart,
-      endTime: s.newEnd
-    },
-    include: {
-      client: true
-    }
-  })
+  // Apply all DB shifts in a single transaction, then sync Google Calendar in
+  // parallel afterwards (network I/O kept out of the transaction).
+  const updatedBookings = await prisma.$transaction(
+    shifts.map((s) =>
+      prisma.booking.update({
+        where: { id: s.id },
+        data: { startTime: s.newStart, endTime: s.newEnd },
+        include: { client: true },
+      })
+    )
+  )
 
-  if (booking.googleEventId) {
-    try {
-      await updateCalendarEvent(
-        booking.googleEventId,
-        booking.notes || 'Batch Session',
-        booking.startTime,
-        booking.endTime,
-        booking.notes || ''
-      )
-
-      console.log(
-        `Updated Google Calendar for booking ${booking.id}`
-      )
-    } catch (err) {
-      console.error(
-        `Failed updating Google Calendar for booking ${booking.id}`,
-        err
-      )
-    }
-  }
-}
+  await Promise.allSettled(
+    updatedBookings.map(async (booking) => {
+      if (!booking.googleEventId) return
+      try {
+        await updateCalendarEvent(
+          booking.googleEventId,
+          booking.notes || 'Batch Session',
+          booking.startTime,
+          booking.endTime,
+          booking.notes || ''
+        )
+      } catch (err) {
+        console.error(`Failed updating Google Calendar for booking ${booking.id}`, err)
+      }
+    })
+  )
   // Update batch endDate
   const newEndDate = shifts[shifts.length - 1].newStart.toISOString().split('T')[0]
   await prisma.batch.update({

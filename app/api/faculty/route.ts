@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { parseBody, facultyCreateSchema } from '@/lib/validation'
 
 export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
@@ -17,8 +18,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { name, phone } = await req.json()
-  if (!name) return NextResponse.json({ error: 'Name required' }, { status: 400 })
+  const parsed = await parseBody(req, facultyCreateSchema)
+  if ('error' in parsed) return parsed.error
+  const { name, phone } = parsed.data
   const faculty = await prisma.faculty.create({ data: { name, phone } })
   return NextResponse.json(faculty, { status: 201 })
 }

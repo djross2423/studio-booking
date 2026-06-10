@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { parseBody, courseUpdateSchema } from '@/lib/validation'
 
 export const dynamic = 'force-dynamic'
 export async function PATCH(
@@ -7,7 +8,9 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   const id = Number(params.id)
-  const body = await req.json()
+  const parsed = await parseBody(req, courseUpdateSchema)
+  if ('error' in parsed) return parsed.error
+  const body = parsed.data
 
   try {
     const course = await prisma.course.update({
@@ -15,9 +18,9 @@ export async function PATCH(
       data: {
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
-        ...(body.fee !== undefined ? { fee: Number(body.fee) } : {}),
-        ...(body.totalSessions !== undefined ? { totalSessions: Number(body.totalSessions) } : {}),
-        ...(body.sessionDuration !== undefined ? { sessionDuration: Number(body.sessionDuration) } : {}),
+        ...(body.fee !== undefined ? { fee: body.fee } : {}),
+        ...(body.totalSessions !== undefined ? { totalSessions: body.totalSessions } : {}),
+        ...(body.sessionDuration !== undefined ? { sessionDuration: body.sessionDuration } : {}),
         ...(body.color !== undefined ? { color: body.color } : {})
       }
     })

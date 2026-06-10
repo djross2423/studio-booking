@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { parseBody, enrollmentStatusSchema } from '@/lib/validation'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,11 +9,9 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   const id = Number(params.id)
-  const { status } = await req.json()
-
-  if (status !== 'active' && status !== 'paused') {
-    return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
-  }
+  const parsed = await parseBody(req, enrollmentStatusSchema)
+  if ('error' in parsed) return parsed.error
+  const { status } = parsed.data
 
   const enrollment = await prisma.enrollment.findUnique({ where: { id } })
   if (!enrollment) {

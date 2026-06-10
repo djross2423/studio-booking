@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { deleteCalendarEvent } from '@/lib/google-calendar'
+import { parseBody, batchUpdateSchema } from '@/lib/validation'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,8 +26,9 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   const id = Number(params.id)
-  const body = await req.json()
-  const { facultyId, addClientId, removeClientId } = body
+  const parsed = await parseBody(req, batchUpdateSchema)
+  if ('error' in parsed) return parsed.error
+  const { facultyId, addClientId, removeClientId } = parsed.data
 
   if (facultyId !== undefined) {
     await prisma.batch.update({
@@ -77,16 +79,16 @@ export async function DELETE(
   // ✅ FIXED: Added explicit 'any' to prevent compilation failure down here
   const bookingIds = bookings.map((b: any) => b.id)
 
-  for (const booking of bookings) {
-    if (booking.googleEventId) {
+  await Promise.allSettled(
+    bookings.map(async (booking) => {
+      if (!booking.googleEventId) return
       try {
         await deleteCalendarEvent(booking.googleEventId)
-        console.log(`Deleted Google event for booking ${booking.id}`)
       } catch (err) {
         console.error(`Failed deleting Google event for booking ${booking.id}`, err)
       }
-    }
-  } 
+    })
+  )
 
   await prisma.absence.deleteMany({ where: { bookingId: { in: bookingIds } } })
   await prisma.facultyAttendance.deleteMany({ where: { bookingId: { in: bookingIds } } })
