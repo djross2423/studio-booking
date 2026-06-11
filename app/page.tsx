@@ -61,6 +61,7 @@ import {
 } from "@/lib/format";
 import { S } from "@/lib/styles";
 import { AppProvider } from "@/lib/app-context";
+import { Sidebar } from "@/components/Sidebar";
 import { SubTabs } from "@/components/ui/SubTabs";
 import { Avatar } from "@/components/ui/Avatar";
 import { Modal } from "@/components/ui/Modal";
@@ -77,7 +78,7 @@ export const dynamic = 'force-dynamic'
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("dashboard");
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [paymentTab, setPaymentTab] = useState<"received" | "pending">(
     "received",
   );
@@ -296,6 +297,14 @@ function resetEnrollmentForm() {
   const openAbsenceModal = (client: Client) => {
     setAbsenceModal(client);
     loadAbsences(client.id);
+  };
+  const goTo = (t: Tab) => {
+    if (t === "payments") {
+      setPaymentTab("received");
+      setPaymentFilter("");
+    }
+    setTab(t);
+    setSidebarOpen(false);
   };
 
   // Cross-cutting services shared with all tab/modal components via context.
@@ -685,7 +694,14 @@ function resetEnrollmentForm() {
 
   return (
     <AppProvider value={services}>
-    <div style={S.app}>
+    <div className="layout">
+      <Sidebar
+        tab={tab}
+        onNavigate={goTo}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+      <div className="main">
       <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
         rel="stylesheet"
@@ -700,7 +716,27 @@ function resetEnrollmentForm() {
             justifyContent: "space-between",
           }}
         >
-          <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              className="hamburger"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open menu"
+              style={{
+                background: "rgba(255,255,255,0.2)",
+                border: "none",
+                borderRadius: 10,
+                width: 40,
+                height: 40,
+                color: "white",
+                fontSize: 20,
+                cursor: "pointer",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              ☰
+            </button>
+            <div>
             <h1
               style={{
                 margin: 0,
@@ -724,6 +760,7 @@ function resetEnrollmentForm() {
                 day: "numeric",
               })}
             </p>
+            </div>
           </div>
           <div style={{ position: "relative" }}>
             <button
@@ -2093,191 +2130,6 @@ function resetEnrollmentForm() {
         />
       )}
 
-      {showMoreMenu && (
-        <>
-          <div
-            onClick={() => setShowMoreMenu(false)}
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 140,
-            }}
-          />
-
-          <div
-            style={{
-              position: "fixed",
-              bottom: 80,
-              right: 16,
-              width: 220,
-              background: "#1A1A24",
-              border: "1px solid #2A2A3D",
-              borderRadius: 16,
-              overflow: "hidden",
-              zIndex: 150,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-              opacity: 1,
-            }}
-          >
-            <button
-              onClick={() => {
-                setShowMoreMenu(false);
-                refreshAllClients();
-                setTab("students");
-              }}
-              style={{
-                width: "100%",
-                padding: "14px 16px",
-                background: "none",
-                border: "none",
-                color: "#F5F5F7",
-                textAlign: "left",
-                cursor: "pointer",
-              }}
-            >
-              👥 Students
-            </button>
-            <button
-              onClick={() => {
-                setShowMoreMenu(false);
-                refreshFaculties();
-                setTab("faculty");
-              }}
-              style={{
-                width: "100%",
-                padding: "14px 16px",
-                background: "none",
-                border: "none",
-                color: "#F5F5F7",
-                textAlign: "left",
-                cursor: "pointer",
-              }}
-            >
-              🎓 Faculty
-            </button>
-
-            <button
-              onClick={() => {
-                setShowMoreMenu(false);
-                setTab("courses");
-              }}
-              style={{
-                width: "100%",
-                padding: "14px 16px",
-                background: "none",
-                border: "none",
-                color: "#F5F5F7",
-                textAlign: "left",
-                cursor: "pointer",
-              }}
-            >
-              📘 Courses
-            </button>
-
-            <button
-              onClick={() => {
-                setShowMoreMenu(false);
-                setTab("enrollment");
-              }}
-              style={{
-                width: "100%",
-                padding: "14px 16px",
-                background: "none",
-                border: "none",
-                color: "#F5F5F7",
-                textAlign: "left",
-                cursor: "pointer",
-              }}
-            >
-              📝 Enrollment
-            </button>
-
-            <button
-              onClick={() => {
-                setShowMoreMenu(false);
-                refreshEnrollments();
-                setPaymentTab("received");
-                setPaymentFilter("");
-                setTab("payments");
-              }}
-              style={{
-                width: "100%",
-                padding: "14px 16px",
-                background: "none",
-                border: "none",
-                color: "#F5F5F7",
-                textAlign: "left",
-                cursor: "pointer",
-              }}
-            >
-              💳 Payments
-            </button>
-
-            <button
-              onClick={() => {
-                setShowMoreMenu(false);
-                loadArchivedClients();
-                loadArchivedFaculties();
-                setTab("archives");
-              }}
-              style={{
-                width: "100%",
-                padding: "14px 16px",
-                background: "none",
-                border: "none",
-                color: "#F5F5F7",
-                textAlign: "left",
-                cursor: "pointer",
-              }}
-            >
-              🗄️ Archives
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* Tab bar */}
-      <div style={S.tabBar}>
-        {(
-          [
-            ["dashboard", "Home", "🏠"],
-            ["calendar", "Calendar", "📅"],
-            ["batches", "Batches", "📚"],
-            ["fees", "Fees", "💰"],
-            ["more", "More", "⋯"],
-          ] as const
-        ).map(([id, label, icon]) => (
-          <button
-            key={id}
-            onClick={() => {
-              if (id === "more") {
-                setShowMoreMenu((v) => !v);
-                return;
-              }
-
-              setTab(id);
-            }}
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 4,
-              padding: "8px 6px",
-              borderRadius: 12,
-              border: "none",
-              background: tab === id ? "rgba(108,60,225,0.15)" : "transparent",
-              color: tab === id ? "#8B5CF6" : "#9CA3AF",
-              fontSize: 11,
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-          >
-            <span style={{ fontSize: 20 }}>{icon}</span>
-            {label}
-          </button>
-        ))}
-      </div>
 
       {/* Booking Modal */}
       {showBookingModal && (
@@ -4985,6 +4837,7 @@ onClick={() => {
         }}
       >
         {toast}
+      </div>
       </div>
     </div>
     </AppProvider>

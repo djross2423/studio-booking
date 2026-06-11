@@ -3,8 +3,7 @@ import type { CSSProperties } from "react";
 // Shared style tokens used across the app UI.
 export const S: Record<string, CSSProperties> = {
   app: {
-    maxWidth: 480,
-    margin: "0 auto",
+    width: "100%",
     minHeight: "100vh",
     fontFamily: "'Inter',system-ui,sans-serif",
     background: "#0F0F14",
@@ -19,14 +18,13 @@ export const S: Record<string, CSSProperties> = {
     zIndex: 50,
     boxShadow: "0 8px 32px rgba(108,60,225,0.3)",
   },
-  page: { padding: "20px", paddingBottom: 100 },
+  page: { padding: "20px", paddingBottom: 40 },
   tabBar: {
     position: "fixed",
     bottom: 0,
-    left: "50%",
-    transform: "translateX(-50%)",
-    width: "min(100%, 480px)",
-    maxWidth: 480,
+    left: 0,
+    right: 0,
+    width: "100%",
     background: "rgba(26,26,36,0.95)",
     backdropFilter: "blur(20px)",
     borderTop: "1px solid #2A2A3D",
