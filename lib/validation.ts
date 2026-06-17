@@ -30,14 +30,27 @@ const id = z.coerce.number().int().positive()
 const optionalString = z.string().trim().optional()
 
 // --- Bookings -------------------------------------------------------------
-export const bookingCreateSchema = z.object({
-  clientId: id,
-  room: z.string().min(1),
-  startTime: z.string().min(1),
-  endTime: z.string().min(1),
-  notes: z.string().optional(),
-  sessionType: z.string().optional(),
+// A single prospective student captured on a demo booking.
+const enquiryInput = z.object({
+  name: z.string().trim().min(1),
+  phone: z.string().trim().optional(),
 })
+
+export const bookingCreateSchema = z
+  .object({
+    // Optional: a demo booking carries enquiries (name+phone) instead of a client.
+    clientId: id.optional(),
+    room: z.string().min(1),
+    startTime: z.string().min(1),
+    endTime: z.string().min(1),
+    notes: z.string().optional(),
+    sessionType: z.string().optional(),
+    enquiries: z.array(enquiryInput).optional(),
+  })
+  .refine((b) => b.clientId !== undefined || (b.enquiries?.length ?? 0) > 0, {
+    message: 'A booking needs either a student or at least one enquiry',
+    path: ['clientId'],
+  })
 
 export const bookingUpdateSchema = z.object({
   clientId: z.coerce.number().int().positive().optional(),
@@ -47,6 +60,7 @@ export const bookingUpdateSchema = z.object({
   notes: z.string().optional(),
   status: z.string().optional(),
   sessionType: z.string().optional(),
+  enquiries: z.array(enquiryInput).optional(),
 })
 
 // --- Batches --------------------------------------------------------------
@@ -164,4 +178,13 @@ export const attendanceSchema = z.object({
 export const batchEnrolmentSchema = z.object({
   batchId: id,
   clientId: id,
+})
+
+// --- Transactions (finance ledger) ----------------------------------------
+export const transactionSchema = z.object({
+  type: z.enum(['spent', 'received']),
+  amount: z.coerce.number().positive(),
+  description: z.string().trim().min(1),
+  category: z.string().trim().optional(),
+  occurredOn: z.string().optional(), // YYYY-MM-DD
 })

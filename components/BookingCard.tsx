@@ -122,6 +122,30 @@ export function BookingCard({ b, onClick }: { b: Booking; onClick?: () => void }
               ))}
             </div>
           </div>
+        ) : b.enquiries && b.enquiries.length ? (
+          <div
+            style={{
+              display: "flex",
+              gap: 6,
+              flexWrap: "wrap",
+              marginBottom: 4,
+            }}
+          >
+            {b.enquiries.map((e) => (
+              <div
+                key={e.id}
+                style={{ display: "flex", alignItems: "center", gap: 5 }}
+              >
+                <Avatar name={e.name} size={24} radius={6} fontSize={10} />
+                <span style={{ fontSize: 12, color: "#D1D5DB" }}>
+                  {e.name}
+                  {e.phone && (
+                    <span style={{ color: "#6B7280" }}> · {e.phone}</span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
         ) : (
           <div
             style={{

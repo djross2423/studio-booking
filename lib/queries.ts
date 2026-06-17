@@ -8,6 +8,7 @@ export const queryKeys = {
   clients: ['clients'] as const,
   faculty: ['faculty'] as const,
   courses: ['courses'] as const,
+  enquiries: ['enquiries'] as const,
 }
 
 async function getJson<T>(url: string): Promise<T> {
@@ -59,6 +60,14 @@ export function useCourses<T = unknown>() {
   return useQuery<T[]>({
     queryKey: queryKeys.courses,
     queryFn: () => getJson<T[]>('/api/courses'),
+  })
+}
+
+export function useEnquiries<T = unknown>(enabled = true) {
+  return useQuery<T[]>({
+    queryKey: queryKeys.enquiries,
+    queryFn: () => getJson<T[]>('/api/enquiries'),
+    enabled,
   })
 }
 

@@ -41,6 +41,24 @@ if (!existingBooking) {
     }
   }
 
+  // When enquiries are sent (a demo edit), replace the booking's enquiry rows.
+  const { enquiries } = body
+  if (enquiries) {
+    const cleanEnquiries = enquiries
+      .map((e) => ({ name: e.name.trim(), phone: e.phone?.trim() || null }))
+      .filter((e) => e.name)
+    await prisma.$transaction([
+      prisma.enquiry.deleteMany({ where: { bookingId: id } }),
+      ...(cleanEnquiries.length
+        ? [
+            prisma.enquiry.createMany({
+              data: cleanEnquiries.map((e) => ({ ...e, bookingId: id })),
+            }),
+          ]
+        : []),
+    ])
+  }
+
   const booking = await prisma.booking.update({
     where: { id },
     data: {
@@ -52,17 +70,20 @@ if (!existingBooking) {
       ...(body.sessionType ? { sessionType: body.sessionType } : {}),
       ...(status ? { status } : {}),
     },
-    include: { client: true },
+    include: { client: true, enquiries: true },
   })
 if (booking.googleEventId) {
+  const enquiryTitle = booking.enquiries?.length
+    ? `Demo: ${booking.enquiries.map((e) => e.name).join(', ')}`
+    : null
   await updateCalendarEvent(
     booking.googleEventId,
-    booking.client?.name || 'Studio Booking',
+    booking.client?.name || enquiryTitle || 'Studio Booking',
     booking.startTime,
     booking.endTime,
     booking.notes || ''
   )
-}  
+}
 return NextResponse.json(booking)
 }
 

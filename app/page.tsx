@@ -62,6 +62,8 @@ import {
 import { S } from "@/lib/styles";
 import { AppProvider } from "@/lib/app-context";
 import { Sidebar } from "@/components/Sidebar";
+import { ChatTab } from "@/components/ChatTab";
+import { EnquiriesTab } from "@/components/EnquiriesTab";
 import { SubTabs } from "@/components/ui/SubTabs";
 import { Avatar } from "@/components/ui/Avatar";
 import { Modal } from "@/components/ui/Modal";
@@ -180,6 +182,10 @@ export default function App() {
   const [showNewClient, setShowNewClient] = useState(false);
   const [newClientName, setNewClientName] = useState("");
   const [newClientPhone, setNewClientPhone] = useState("");
+  // Demo bookings collect prospective students ("enquiries") instead of a client.
+  const [demoEnquiries, setDemoEnquiries] = useState<
+    { name: string; phone: string }[]
+  >([{ name: "", phone: "" }]);
   const [bookingForm, setBookingForm] = useState({
     clientId: "",
     room: "dj_classroom",
@@ -427,6 +433,7 @@ function resetEnrollmentForm() {
       notes: "",
     });
     setClientSearch("");
+    setDemoEnquiries([{ name: "", phone: "" }]);
     setFormError("");
     setShowNewClient(false);
     setShowAddMenu(false);
@@ -449,26 +456,48 @@ function resetEnrollmentForm() {
     });
 
     setClientSearch(b.client?.name || "");
+    setDemoEnquiries(
+      b.enquiries && b.enquiries.length
+        ? b.enquiries.map((e) => ({ name: e.name, phone: e.phone ?? "" }))
+        : [{ name: "", phone: "" }],
+    );
     setFormError("");
     setShowBookingModal(true);
   }
   function handleBookingSubmit() {
-    if (!bookingForm.clientId || !bookingForm.date || !bookingForm.startTime) {
+    const isDemo = bookingForm.type === "demo";
+    const cleanEnquiries = demoEnquiries
+      .map((e) => ({ name: e.name.trim(), phone: e.phone.trim() }))
+      .filter((e) => e.name);
+
+    if (!bookingForm.date || !bookingForm.startTime) {
       setFormError("Please fill in required fields");
+      return;
+    }
+    if (isDemo ? cleanEnquiries.length === 0 : !bookingForm.clientId) {
+      setFormError(
+        isDemo
+          ? "Add at least one enquiry (name required)"
+          : "Please fill in required fields",
+      );
       return;
     }
     setFormError("");
     const start = new Date(`${bookingForm.date}T${bookingForm.startTime}:00`);
     const end = new Date(start);
     end.setHours(end.getHours() + Number(bookingForm.duration));
-    const body = {
-      clientId: Number(bookingForm.clientId),
+    const body: Record<string, unknown> = {
       room: bookingForm.room,
       startTime: start.toISOString(),
       endTime: end.toISOString(),
       notes: bookingForm.notes,
       sessionType: bookingForm.type,
     };
+    if (isDemo) {
+      body.enquiries = cleanEnquiries;
+    } else {
+      body.clientId = Number(bookingForm.clientId);
+    }
     const wasEdit = !!editBooking;
     saveBooking.mutate(
       { id: editBooking?.id, body },
@@ -2130,6 +2159,10 @@ function resetEnrollmentForm() {
         />
       )}
 
+      {tab === "enquiries" && <EnquiriesTab />}
+
+      {tab === "chat" && <ChatTab />}
+
 
       {/* Booking Modal */}
       {showBookingModal && (
@@ -2197,7 +2230,82 @@ function resetEnrollmentForm() {
                 ×
               </button>
             </div>
-            <div style={{ marginBottom: 16 }}>
+            {bookingForm.type === "demo" ? (
+              <div style={{ marginBottom: 16 }}>
+                <label style={S.label}>Enquiry *</label>
+                {demoEnquiries.map((enq, i) => (
+                  <div
+                    key={i}
+                    style={{ display: "flex", gap: 8, marginBottom: 8 }}
+                  >
+                    <input
+                      value={enq.name}
+                      onChange={(e) =>
+                        setDemoEnquiries((list) =>
+                          list.map((x, j) =>
+                            j === i ? { ...x, name: e.target.value } : x,
+                          ),
+                        )
+                      }
+                      placeholder="Enquiry name *"
+                      style={{ ...S.input, flex: 2 }}
+                    />
+                    <input
+                      value={enq.phone}
+                      onChange={(e) =>
+                        setDemoEnquiries((list) =>
+                          list.map((x, j) =>
+                            j === i ? { ...x, phone: e.target.value } : x,
+                          ),
+                        )
+                      }
+                      placeholder="Phone"
+                      style={{ ...S.input, flex: 1 }}
+                    />
+                    {demoEnquiries.length > 1 && (
+                      <button
+                        onClick={() =>
+                          setDemoEnquiries((list) =>
+                            list.filter((_, j) => j !== i),
+                          )
+                        }
+                        aria-label="Remove enquiry"
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#9CA3AF",
+                          fontSize: 20,
+                          cursor: "pointer",
+                          padding: "0 4px",
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  onClick={() =>
+                    setDemoEnquiries((list) => [
+                      ...list,
+                      { name: "", phone: "" },
+                    ])
+                  }
+                  style={{
+                    fontSize: 13,
+                    color: "#8B5CF6",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    marginTop: 4,
+                    padding: 0,
+                  }}
+                >
+                  + Add another enquiry
+                </button>
+              </div>
+            ) : (
+              <div style={{ marginBottom: 16 }}>
               <label style={S.label}>Student *</label>
               <input
                 value={clientSearch}
@@ -2311,7 +2419,8 @@ function resetEnrollmentForm() {
                   </button>
                 </div>
               )}
-            </div>
+              </div>
+            )}
             {[
               {
                 label: "Room",

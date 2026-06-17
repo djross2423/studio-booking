@@ -95,6 +95,7 @@ model Booking {
   createdAt         DateTime            @default(now())
   absences          Absence[]
   facultyAttendance FacultyAttendance[]
+  enquiries         Enquiry[]
 
   @@index([room, startTime, endTime])
   @@index([startTime])
@@ -169,4 +170,34 @@ model FeePayment {
   enrollment Enrollment @relation(fields: [enrollmentId], references: [id])
 
   @@index([enrollmentId])
+}
+
+// Prospective student captured while booking a demo class. Several enquiries can
+// attend one demo session, so each links back to that demo Booking.
+model Enquiry {
+  id        Int      @id @default(autoincrement())
+  name      String
+  phone     String?
+  bookingId Int?
+  booking   Booking? @relation(fields: [bookingId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([bookingId])
+  @@index([createdAt])
+}
+
+// General money in/out ledger (separate from student FeePayment), populated by
+// the finance chat assistant. Mirrored best-effort to a Google Sheet.
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  type        String // "spent" | "received"
+  amount      Float
+  description String
+  category    String?
+  occurredOn  DateTime @default(now())
+  source      String   @default("chat") // "chat" | "manual"
+  createdAt   DateTime @default(now())
+
+  @@index([type])
+  @@index([occurredOn])
 }

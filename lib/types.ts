@@ -10,13 +10,29 @@ export type Tab =
   | "courses"
   | "enrollment"
   | "archives"
-  | "payments";
+  | "payments"
+  | "enquiries"
+  | "chat";
 
 export type Client = {
   id: number;
   name: string;
   phone?: string;
   _count?: { absences: number };
+};
+
+export type Enquiry = {
+  id: number;
+  name: string;
+  phone?: string | null;
+  bookingId?: number | null;
+  createdAt?: string;
+  booking?: {
+    id: number;
+    startTime: string;
+    room: string;
+    status: string;
+  } | null;
 };
 
 export type Booking = {
@@ -27,9 +43,11 @@ export type Booking = {
   startTime: string;
   endTime: string;
   status: string;
+  sessionType?: string | null;
   notes?: string;
   batchId?: number;
   batch?: Batch;
+  enquiries?: Enquiry[];
 };
 
 export type BatchEnrolment = { id: number; clientId: number; client: Client };

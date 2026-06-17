@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
           }
         : {}),
     },
-    include: { client: true, batch: true },
+    include: { client: true, batch: true, enquiries: true },
     orderBy: { startTime: 'asc' },
     ...(limit ? { take: Number(limit) } : {}),
   })
@@ -37,7 +37,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const parsed = await parseBody(req, bookingCreateSchema)
   if ('error' in parsed) return parsed.error
-  const { clientId, room, startTime, endTime, notes, sessionType } = parsed.data
+  const { clientId, room, startTime, endTime, notes, sessionType, enquiries } =
+    parsed.data
+  const cleanEnquiries = (enquiries ?? [])
+    .map((e) => ({ name: e.name.trim(), phone: e.phone?.trim() || null }))
+    .filter((e) => e.name)
 
   const start = new Date(startTime)
   const end = new Date(endTime)
@@ -56,15 +60,18 @@ export async function POST(req: NextRequest) {
       }
       return tx.booking.create({
         data: {
-          clientId: Number(clientId),
+          clientId: clientId !== undefined ? Number(clientId) : null,
           room,
           startTime: start,
           endTime: end,
           status: 'confirmed',
           ...(notes !== undefined ? { notes } : {}),
           ...(sessionType ? { sessionType } : {}),
+          ...(cleanEnquiries.length
+            ? { enquiries: { create: cleanEnquiries } }
+            : {}),
         },
-        include: { client: true },
+        include: { client: true, enquiries: true },
       })
     })
   } catch (e: any) {
@@ -78,8 +85,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const enquiryTitle = booking.enquiries?.length
+      ? `Demo: ${booking.enquiries.map((e) => e.name).join(', ')}`
+      : null
     const event = await createCalendarEvent(
-      booking.client?.name || 'Studio Booking',
+      booking.client?.name || enquiryTitle || 'Studio Booking',
       booking.startTime,
       booking.endTime,
       booking.notes || ''

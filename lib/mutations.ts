@@ -30,7 +30,7 @@ export function useSaveBooking() {
   return useMutation({
     mutationFn: ({ id, body }: { id?: number; body: unknown }) =>
       send(id ? 'PATCH' : 'POST', id ? `/api/bookings/${id}` : '/api/bookings', body),
-    onSuccess: () => invalidate(queryKeys.bookings),
+    onSuccess: () => invalidate(queryKeys.bookings, queryKeys.enquiries),
   })
 }
 

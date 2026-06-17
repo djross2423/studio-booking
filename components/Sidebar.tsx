@@ -12,7 +12,9 @@ const NAV: [Tab, string, string][] = [
   ["enrollment", "Enrollment", "📝"],
   ["fees", "Fees", "💰"],
   ["payments", "Payments", "💳"],
+  ["enquiries", "Enquiries", "🌱"],
   ["archives", "Archives", "🗄️"],
+  ["chat", "Assistant", "💬"],
 ];
 
 export function Sidebar({

@@ -9,7 +9,8 @@ const oauth2Client = new google.auth.OAuth2(
 )
 
 const scopes = [
-  'https://www.googleapis.com/auth/calendar'
+  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/spreadsheets'
 ]
 
 const authUrl = oauth2Client.generateAuthUrl({
