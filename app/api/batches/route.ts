@@ -46,8 +46,12 @@ export async function POST(req: NextRequest) {
 
   while (sessions.length < target) {
     if (days.includes(cursor.getDay())) {
-      // 1. Get the YYYY-MM-DD part from the current cursor
-      const dateStr = cursor.toISOString().split('T')[0];
+      // 1. Build the YYYY-MM-DD from the cursor's LOCAL date parts. Using
+      // toISOString() here would convert to UTC and (for IST, +05:30) roll the
+      // date back a day, so the session would land on the day before the
+      // weekday matched by getDay() above.
+      const pad = (n: number) => String(n).padStart(2, '0')
+      const dateStr = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}-${pad(cursor.getDate())}`;
 
       // 2. Build the exact IST moment by forcing the +05:30 offset
       // This forces the server to treat the time as 10:00 AM IST, not UTC
