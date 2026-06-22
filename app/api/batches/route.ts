@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { isStudioAvailable } from '@/lib/availability'
 import { createCalendarEvent } from '@/lib/google-calendar'
 import { parseBody, batchCreateSchema } from '@/lib/validation'
 
@@ -83,13 +82,26 @@ export async function POST(req: NextRequest) {
   let batch
   try {
     batch = await prisma.$transaction(async (tx) => {
-      for (const s of sessions) {
-        const available = await isStudioAvailable(s.start, s.end, room, [], tx)
-        if (!available) {
-          throw new Error(
-            `CONFLICT::Conflict on ${s.start.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} at ${startTime} — studio already booked`
-          )
-        }
+      // One query for ALL sessions instead of a sequential availability check
+      // per session: find any non-cancelled booking in this room that overlaps
+      // any of the new session windows. The old N-round-trip loop could exceed
+      // Prisma's 5s interactive-transaction timeout on a remote DB (Vercel→Neon)
+      // for a full 16-session batch, surfacing as a generic "request failed".
+      const clash = await tx.booking.findFirst({
+        where: {
+          room,
+          status: { not: 'cancelled' },
+          OR: sessions.map((s) => ({
+            startTime: { lt: s.end },
+            endTime: { gt: s.start },
+          })),
+        },
+        orderBy: { startTime: 'asc' },
+      })
+      if (clash) {
+        throw new Error(
+          `CONFLICT::Conflict on ${clash.startTime.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} — studio already booked`
+        )
       }
 
       return tx.batch.create({
@@ -114,7 +126,7 @@ export async function POST(req: NextRequest) {
           course: true
         }
       })
-    })
+    }, { timeout: 20000, maxWait: 10000 })
   } catch (e: any) {
     if (typeof e?.message === 'string' && e.message.startsWith('CONFLICT::')) {
       return NextResponse.json({ error: e.message.slice('CONFLICT::'.length) }, { status: 409 })

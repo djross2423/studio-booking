@@ -599,6 +599,13 @@ function resetEnrollmentForm() {
       setFormError("Add at least one student");
       return;
     }
+    if (!selectedCourse) {
+      // courseId is set but the course isn't in the loaded list (e.g. the
+      // courses query hasn't refreshed after creating it). Fail loudly instead
+      // of throwing on selectedCourse!.totalSessions below.
+      setFormError("Course details not loaded yet — pick the course again");
+      return;
+    }
     // Validate start date falls on one of the selected days
     const startDay = new Date(batchForm.startDate + "T00:00:00").getDay();
     const days = getDayPairDays(batchForm.dayPair);
@@ -621,12 +628,12 @@ function resetEnrollmentForm() {
 
     const name = batchForm.name || autoName(batchForm.dayPair, batchCount);
 
-    const totalSessions = selectedCourse!.totalSessions;
+    const totalSessions = selectedCourse.totalSessions;
     const body = {
       name,
       room: batchForm.room,
       startTime: batchForm.timeSlot,
-      duration: selectedCourse!.sessionDuration,
+      duration: selectedCourse.sessionDuration,
       repeatDays: days.join(","),
       startDate: batchForm.startDate,
       endDate: "",
@@ -3035,7 +3042,7 @@ function resetEnrollmentForm() {
               style={S.btnPrimary}
             >
               {createBatch.isPending
-                ? `Booking ${selectedCourse!.totalSessions} sessions...`
+                ? `Booking ${selectedCourse?.totalSessions ?? ""} sessions...`
                 : "Create Batch & Book All Sessions"}
             </button>
             <button
