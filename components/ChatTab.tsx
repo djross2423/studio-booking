@@ -37,7 +37,7 @@ export function ChatTab() {
       });
       const data = await res.json();
       const reply = res.ok
-        ? data.reply || "(no reply)"
+        ? data.reply || "Done."
         : "⚠ " + (data.error || "Something went wrong.");
       setMessages([...next, { role: "assistant", content: reply }]);
     } catch {

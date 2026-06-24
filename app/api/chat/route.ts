@@ -162,7 +162,15 @@ export async function POST(req: NextRequest) {
 
       const calls = result.functionCalls
       if (!calls || calls.length === 0) {
-        const reply = (result.text ?? '').trim()
+        let reply = (result.text ?? '').trim()
+        if (!reply) {
+          // Gemini sometimes returns no text — commonly after running a tool, or
+          // when a response is empty/blocked. Give a useful message instead of
+          // surfacing a blank "(no reply)" bubble.
+          reply = actions.includes('add_transaction')
+            ? 'Done — saved that to the ledger.'
+            : "I didn't quite catch that. Try e.g. “spent 500 on cables” or “what's my net this month?”"
+        }
         return NextResponse.json({ reply, actions })
       }
 
@@ -185,6 +193,15 @@ export async function POST(req: NextRequest) {
     )
   } catch (err: any) {
     console.error('Chat error', err)
+    if (actions.includes('add_transaction')) {
+      // The ledger write already succeeded before this error (e.g. the model's
+      // follow-up call got overloaded). Report success so the user doesn't retry
+      // and create a duplicate entry.
+      return NextResponse.json({
+        reply: 'Saved that to the ledger. (I couldn’t write a full confirmation just then, but it was recorded.)',
+        actions,
+      })
+    }
     if (isTransient(err)) {
       return NextResponse.json(
         {
