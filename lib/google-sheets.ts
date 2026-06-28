@@ -25,6 +25,14 @@ export async function appendTransactionRow(row: LedgerRow): Promise<boolean> {
     console.warn('GOOGLE_SHEETS_ID not set — skipping Sheet append')
     return false
   }
+  if (spreadsheetId.startsWith('AIza')) {
+    // A spreadsheet id never looks like this — it's an API key in the wrong var.
+    console.error(
+      'GOOGLE_SHEETS_ID looks like an API key, not a spreadsheet id. ' +
+        'Set it to the id from the sheet URL (/spreadsheets/d/<ID>/edit).',
+    )
+    return false
+  }
   try {
     await sheets.spreadsheets.values.append({
       spreadsheetId,
